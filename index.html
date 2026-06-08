@@ -1179,6 +1179,16 @@ function debtNetBalance(){
   return{medeben,debo,neto:medeben-debo};
 }
 
+function switchDebtTab(debtId, tab){
+  ['mov','estado'].forEach(t=>{
+    const btn=document.getElementById(`dtab-${t}-${debtId}`);
+    const content=document.getElementById(`dtabcontent-${t}-${debtId}`);
+    const active=t===tab;
+    if(btn){btn.style.background=active?'var(--surface)':'transparent';btn.style.color=active?'var(--text)':'var(--muted)';btn.style.fontWeight=active?'500':'400';}
+    if(content) content.style.display=active?'block':'none';
+  });
+}
+
 function renderDebts(){
   const list=document.getElementById('debt-list'); if(!list)return;
 
@@ -1200,61 +1210,157 @@ function renderDebts(){
     const pct=Math.min(100,d.total>0?(d.pagado/d.total)*100:0);
     const vencidas=d.cuotas.filter(c=>!c.pagada&&c.fecha<today).length;
     const colorClass=d.dir==='debo'?'debo':'medeben';
+    const colorVar=d.dir==='debo'?'var(--red)':'var(--green)';
     const liquidada=restante<=0.01;
 
+    // ---- TAB 1: MOVIMIENTOS ----
     const cuotasHTML=d.cuotas.length?d.cuotas.map(c=>{
       const venc=!c.pagada&&c.fecha<today;
       const isExtra=c.tipo==='amortizacion'||c.tipo==='cancelacion'||c.tipo==='libre';
-      const rowStyle=isExtra?'background:rgba(255,255,255,.03);border-radius:6px;':'';
+      const rowStyle=isExtra?'background:rgba(255,255,255,.03);border-radius:6px;padding:6px 0;':'';
       return`<div class="cuota-row" style="${rowStyle}">
         <span class="cuota-fecha">${c.fecha}</span>
         <span class="cuota-desc">${c.desc}${isExtra?` <span style="font-size:10px;color:var(--muted2)">[extra]</span>`:''}</span>
-        <span class="cuota-amt" style="color:var(--${d.dir==='debo'?'red':'green'})">${fmt(c.importe)}</span>
+        <span class="cuota-amt" style="color:${colorVar}">${fmt(c.importe)}</span>
         <div class="cuota-actions">
           ${isExtra
-            ? `<span class="badge ok">Pagado</span>`
-            : `<span class="badge ${c.pagada?'ok':venc?'venc':'pend'}">${c.pagada?'Pagada':venc?'Vencida':'Pendiente'}</span>
-               <button class="btn btn-xs ${c.pagada?'btn-ghost':'btn-success'}" onclick="toggleCuota(${d.id},${c.id})">${c.pagada?'Desmarcar':'✓ Pagar'}</button>`
+            ?`<span class="badge ok">Pagado</span>`
+            :`<span class="badge ${c.pagada?'ok':venc?'venc':'pend'}">${c.pagada?'Pagada':venc?'Vencida':'Pendiente'}</span>
+              <button class="btn btn-xs ${c.pagada?'btn-ghost':'btn-success'}" onclick="toggleCuota(${d.id},${c.id})">${c.pagada?'Desmarcar':'✓ Pagar'}</button>`
           }
           <button class="del-btn" onclick="deleteCuota(${d.id},${c.id})">✕</button>
         </div>
       </div>`;
-    }).join(''):'<div style="font-size:12px;color:var(--muted2);padding:4px 0">Sin cuotas definidas.</div>';
+    }).join(''):'<div style="font-size:12px;color:var(--muted2);padding:6px 0">Sin cuotas definidas.</div>';
 
-    const accionesHTML=liquidada?
-      `<div style="text-align:center;padding:10px;font-size:13px;color:var(--green);font-weight:500">✓ Deuda liquidada</div>`
-    :`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
-        <div>
-          <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Registrar pago / cuota</div>
-          <div class="add-cuota-row">
-            <input type="date" id="cl-fecha-${d.id}" style="flex:0 0 120px" value="${today}"/>
-            <input type="number" id="cl-imp-${d.id}" placeholder="Importe €" step="0.01" style="flex:0 0 100px"/>
-            <input type="text" id="cl-desc-${d.id}" placeholder="Descripción" style="flex:1"/>
-            <button class="btn btn-sm btn-success" onclick="addCuotaLibre(${d.id})">✓ Pagar</button>
+    const accionesHTML=liquidada
+      ?`<div style="text-align:center;padding:10px;font-size:13px;color:var(--green);font-weight:500">✓ Deuda liquidada</div>`
+      :`<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+          <div>
+            <div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px">Registrar pago</div>
+            <div class="add-cuota-row">
+              <input type="date" id="cl-fecha-${d.id}" style="flex:0 0 118px" value="${today}"/>
+              <input type="number" id="cl-imp-${d.id}" placeholder="Importe €" step="0.01" style="flex:1"/>
+              <input type="text" id="cl-desc-${d.id}" placeholder="Descripción" style="flex:1.2"/>
+              <button class="btn btn-sm btn-success" onclick="addCuotaLibre(${d.id})">✓ Pagar</button>
+            </div>
           </div>
-        </div>
-        <div>
-          <div style="font-size:11px;color:var(--amber);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Amortización parcial</div>
-          <div class="add-cuota-row" style="margin-bottom:6px">
-            <input type="date" id="am-fecha-${d.id}" style="flex:0 0 120px" value="${today}"/>
-            <input type="number" id="am-imp-${d.id}" placeholder="Capital €" step="0.01" style="flex:1"/>
-            <select id="am-modalidad-${d.id}" style="flex:0 0 130px;font-size:12px;padding:5px 8px">
-              <option value="importe">Reducir cuota</option>
-              <option value="plazo">Reducir plazo</option>
-            </select>
-            <button class="btn btn-sm btn-ghost" style="border-color:rgba(245,158,11,.3);color:var(--amber)" onclick="amortizarParcial(${d.id})">Amortizar</button>
+          <div>
+            <div style="font-size:10px;color:var(--amber);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px">Amortización parcial</div>
+            <div class="add-cuota-row" style="margin-bottom:5px">
+              <input type="date" id="am-fecha-${d.id}" style="flex:0 0 118px" value="${today}"/>
+              <input type="number" id="am-imp-${d.id}" placeholder="Capital €" step="0.01" style="flex:1"/>
+              <select id="am-modalidad-${d.id}" style="flex:0 0 120px;font-size:12px;padding:5px 8px">
+                <option value="importe">Reducir cuota</option>
+                <option value="plazo">Reducir plazo</option>
+              </select>
+              <button class="btn btn-sm btn-ghost" style="border-color:rgba(245,158,11,.3);color:var(--amber)" onclick="amortizarParcial(${d.id})">Amortizar</button>
+            </div>
+            <div style="font-size:10px;color:var(--red);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px;margin-top:10px">Cancelación anticipada</div>
+            <div class="add-cuota-row">
+              <input type="date" id="cancel-fecha-${d.id}" style="flex:0 0 118px" value="${today}"/>
+              <input type="number" id="cancel-imp-${d.id}" placeholder="Importe" step="0.01" value="${restante.toFixed(2)}" style="flex:1"/>
+              <button class="btn btn-sm btn-danger" onclick="cancelarDeuda(${d.id})">Cancelar deuda</button>
+            </div>
           </div>
-          <div style="font-size:11px;color:var(--muted2);margin-bottom:8px">Capital pendiente: <strong style="color:var(--text)">${fmt(restante)}</strong></div>
-          <div style="font-size:11px;color:var(--red);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Cancelación anticipada</div>
-          <div class="add-cuota-row">
-            <input type="date" id="cancel-fecha-${d.id}" style="flex:0 0 120px" value="${today}"/>
-            <input type="number" id="cancel-imp-${d.id}" placeholder="Importe cancelación" step="0.01" value="${restante.toFixed(2)}" style="flex:1"/>
-            <button class="btn btn-sm btn-danger" onclick="cancelarDeuda(${d.id})">Cancelar deuda</button>
-          </div>
-        </div>
+        </div>`;
+
+    // ---- TAB 2: ESTADO DE PAGO ----
+    const todayDate=new Date(today);
+    const m1=new Date(todayDate); m1.setMonth(m1.getMonth()+1);
+    const m2=new Date(todayDate); m2.setMonth(m2.getMonth()+2);
+    const m3=new Date(todayDate); m3.setMonth(m3.getMonth()+3);
+    const toYYYYMM=d=>d.toISOString().slice(0,7);
+    const todayYM=toYYYYMM(todayDate);
+    const m1YM=toYYYYMM(m1), m2YM=toYYYYMM(m2), m3YM=toYYYYMM(m3);
+
+    const cuotasPend=d.cuotas.filter(c=>!c.pagada&&c.tipo==='cuota');
+    // Agrupa por mes
+    const byMonth={};
+    cuotasPend.forEach(c=>{
+      const ym=c.fecha.slice(0,7);
+      if(!byMonth[ym])byMonth[ym]={importe:0,cuotas:[]};
+      byMonth[ym].importe=Math.round((byMonth[ym].importe+c.importe)*100)/100;
+      byMonth[ym].cuotas.push(c);
+    });
+
+    const proxMeses=[todayYM,m1YM,m2YM,m3YM];
+    const proxTotal=proxMeses.reduce((s,ym)=>s+(byMonth[ym]?.importe||0),0);
+    const proxPct=restante>0?Math.round((proxTotal/restante)*100):0;
+    const MNAMES=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+    const proxBarras=proxMeses.map(ym=>{
+      const imp=byMonth[ym]?.importe||0;
+      const [y,m]=ym.split('-').map(Number);
+      const label=MNAMES[m-1]+' '+y;
+      const barPct=restante>0?Math.min(100,(imp/restante)*100):0;
+      if(imp<=0) return`<div style="display:flex;align-items:center;gap:10px;padding:5px 0">
+        <div style="font-size:12px;color:var(--muted2);width:60px">${label}</div>
+        <div style="font-size:12px;color:var(--muted2)">—</div>
       </div>`;
+      return`<div style="padding:6px 0">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <span style="font-size:12px;font-weight:500">${label}</span>
+          <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:${colorVar}">${fmt(imp)}</span>
+        </div>
+        <div style="height:6px;background:var(--surface3);border-radius:3px;overflow:hidden">
+          <div style="height:100%;width:${barPct.toFixed(1)}%;background:${colorVar};border-radius:3px;transition:width .3s"></div>
+        </div>
+        <div style="font-size:10px;color:var(--muted2);margin-top:2px">${barPct.toFixed(1)}% del capital pendiente</div>
+      </div>`;
+    }).join('');
 
-    return`<div class="debt-card ${colorClass}-card" style="${vencidas&&!liquidada?'border-color:'+( d.dir==='debo'?'var(--red)':'var(--green)'):''}">
+    // Resto de cuotas (más allá de los 3 meses)
+    const restoKeys=Object.keys(byMonth).filter(ym=>!proxMeses.includes(ym)).sort();
+    const restoTotal=restoKeys.reduce((s,ym)=>s+byMonth[ym].importe,0);
+    const restoHTML=restoKeys.length?`
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">
+          Cuotas restantes (${restoKeys.length} meses · ${fmt(restoTotal)})
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px">
+          ${restoKeys.map(ym=>{
+            const [y,m]=ym.split('-').map(Number);
+            const imp=byMonth[ym].importe;
+            const barPct=restante>0?Math.min(100,(imp/restante)*100):0;
+            return`<div style="background:var(--surface2);border-radius:8px;padding:8px 10px">
+              <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+                <span style="font-size:11px;color:var(--muted)">${MNAMES[m-1]} ${y}</span>
+                <span style="font-family:var(--mono);font-size:11px;font-weight:500;color:${colorVar}">${fmt(imp)}</span>
+              </div>
+              <div style="height:3px;background:var(--surface3);border-radius:2px;overflow:hidden">
+                <div style="height:100%;width:${barPct.toFixed(1)}%;background:${colorVar};opacity:.5;border-radius:2px"></div>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`:'<div style="font-size:12px;color:var(--muted2);margin-top:10px">No hay más cuotas programadas.</div>';
+
+    const estadoHTML=liquidada
+      ?`<div style="text-align:center;padding:16px;font-size:13px;color:var(--green);font-weight:500">✓ Deuda liquidada</div>`
+      :`<div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
+            <div style="background:var(--surface2);border-radius:8px;padding:10px 12px">
+              <div style="font-size:10px;color:var(--muted2);margin-bottom:4px">Capital pendiente</div>
+              <div style="font-family:var(--mono);font-size:16px;font-weight:600;color:${colorVar}">${fmt(restante)}</div>
+            </div>
+            <div style="background:var(--surface2);border-radius:8px;padding:10px 12px">
+              <div style="font-size:10px;color:var(--muted2);margin-bottom:4px">Próximos 3 meses</div>
+              <div style="font-family:var(--mono);font-size:16px;font-weight:600;color:${colorVar}">${fmt(proxTotal)}</div>
+              <div style="font-size:10px;color:var(--muted2);margin-top:2px">${proxPct}% del pendiente</div>
+            </div>
+            <div style="background:var(--surface2);border-radius:8px;padding:10px 12px">
+              <div style="font-size:10px;color:var(--muted2);margin-bottom:4px">Cuotas pendientes</div>
+              <div style="font-family:var(--mono);font-size:16px;font-weight:600">${cuotasPend.length}</div>
+              <div style="font-size:10px;color:var(--muted2);margin-top:2px">${vencidas?`<span style="color:var(--red)">${vencidas} vencida${vencidas>1?'s':''}</span>`:'Al día ✓'}</div>
+            </div>
+          </div>
+          <div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">Próximos 3 meses</div>
+          ${proxBarras}
+          ${restoHTML}
+        </div>`;
+
+    return`<div class="debt-card ${colorClass}-card" style="${vencidas&&!liquidada?'border-color:'+colorVar:''}">
       <div class="debt-header">
         <div class="debt-header-left">
           <div class="debt-name">
@@ -1278,13 +1384,28 @@ function renderDebts(){
         <button class="del-btn" onclick="deleteDebt(${d.id})">✕</button>
       </div>
       <div class="debt-progress"><div class="debt-progress-bar ${liquidada?'medeben':colorClass}" style="width:${pct}%"></div></div>
-      <div class="debt-cuotas">
-        <div class="debt-cuotas-title">Cuotas / pagos</div>
-        ${cuotasHTML}
-      </div>
-      ${accionesHTML}
-    </div>`;
 
+      <!-- TABS -->
+      <div style="display:flex;gap:3px;background:var(--surface2);border-radius:7px;padding:3px;margin-top:12px">
+        <button onclick="switchDebtTab(${d.id},'mov')" id="dtab-mov-${d.id}"
+          style="flex:1;padding:6px 0;border:none;border-radius:5px;font-size:12px;font-family:var(--font);cursor:pointer;transition:all .15s;background:var(--surface);color:var(--text);font-weight:500">
+          📋 Movimientos
+        </button>
+        <button onclick="switchDebtTab(${d.id},'estado')" id="dtab-estado-${d.id}"
+          style="flex:1;padding:6px 0;border:none;border-radius:5px;font-size:12px;font-family:var(--font);cursor:pointer;transition:all .15s;background:transparent;color:var(--muted);font-weight:400">
+          📊 Estado de pago
+        </button>
+      </div>
+
+      <div id="dtabcontent-mov-${d.id}" style="margin-top:10px">
+        <div class="debt-cuotas-title">Historial de cuotas y pagos</div>
+        ${cuotasHTML}
+        ${accionesHTML}
+      </div>
+      <div id="dtabcontent-estado-${d.id}" style="display:none;margin-top:10px">
+        ${estadoHTML}
+      </div>
+    </div>`;
   }
 
   let html='';
