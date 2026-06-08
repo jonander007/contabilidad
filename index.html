@@ -440,21 +440,34 @@ tbody tr:hover td{background:rgba(255,255,255,.02)}
     <div style="display:flex;justify-content:flex-end"><button class="btn btn-primary" onclick="addDebt()">Crear deuda</button></div>
   </div>
 
-  <!-- RESUMEN DEUDAS -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
-    <div class="card" style="border-left:3px solid var(--red)">
-      <div class="card-title" style="color:var(--red)">Lo que debo</div>
-      <div class="metric-val r" id="total-debo" style="font-size:24px">€0,00</div>
-      <div class="metric-sub" id="count-debo"></div>
-    </div>
-    <div class="card" style="border-left:3px solid var(--green)">
-      <div class="card-title" style="color:var(--green)">Lo que me deben</div>
-      <div class="metric-val g" id="total-medeben" style="font-size:24px">€0,00</div>
-      <div class="metric-sub" id="count-medeben"></div>
-    </div>
+  <!-- TABS DEUDAS -->
+  <div class="dir-tabs" style="margin-bottom:18px">
+    <button class="dir-tab active" id="deudatab-resumen" onclick="showDeudaTab('resumen')">📋 Deudas</button>
+    <button class="dir-tab" id="deudatab-estado" onclick="showDeudaTab('estado')">📊 Estado de pago global</button>
   </div>
 
-  <div id="debt-list"></div>
+  <!-- TAB: DEUDAS -->
+  <div id="deudatab-content-resumen">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
+      <div class="card" style="border-left:3px solid var(--red)">
+        <div class="card-title" style="color:var(--red)">Lo que debo</div>
+        <div class="metric-val r" id="total-debo" style="font-size:24px">€0,00</div>
+        <div class="metric-sub" id="count-debo"></div>
+      </div>
+      <div class="card" style="border-left:3px solid var(--green)">
+        <div class="card-title" style="color:var(--green)">Lo que me deben</div>
+        <div class="metric-val g" id="total-medeben" style="font-size:24px">€0,00</div>
+        <div class="metric-sub" id="count-medeben"></div>
+      </div>
+    </div>
+    <div id="debt-list"></div>
+  </div>
+
+  <!-- TAB: ESTADO DE PAGO GLOBAL -->
+  <div id="deudatab-content-estado" style="display:none">
+    <div id="debt-estado-global"></div>
+  </div>
+
 </div>
 
 <!-- DIRECTORIO -->
@@ -1116,7 +1129,7 @@ function amortizarParcial(debtId){
     }
   }
 
-  save(); renderDebts(); updateDebtBadge(); render();
+  save(); renderDebts(); updateDebtBadge(); render(); renderEstadoGlobal();
 }
 
 /* ---- CANCELACIÓN ANTICIPADA ---- */
@@ -1132,7 +1145,7 @@ function cancelarDeuda(debtId){
   d.cuotas.filter(c=>!c.pagada).forEach(c=>c.pagada=true);
   d.cuotas.push({id:Date.now(),fecha:fechaCancel,importe:impCancel,desc:'Cancelación anticipada',pagada:true,tipo:'cancelacion'});
   d.pagado=d.total;
-  save(); renderDebts(); updateDebtBadge(); render();
+  save(); renderDebts(); updateDebtBadge(); render(); renderEstadoGlobal();
 }
 
 function addCuotaLibre(debtId){
@@ -1143,7 +1156,7 @@ function addCuotaLibre(debtId){
   const d=window.debts.find(x=>x.id===debtId); if(!d)return;
   d.cuotas.push({id:Date.now(),fecha,importe:imp,desc:desc||'Pago',pagada:true,tipo:'libre'});
   d.pagado=Math.round((d.pagado+imp)*100)/100;
-  save(); renderDebts(); updateDebtBadge(); render();
+  save(); renderDebts(); updateDebtBadge(); render(); renderEstadoGlobal();
 }
 
 function toggleCuota(debtId,cuotaId){
@@ -1151,19 +1164,19 @@ function toggleCuota(debtId,cuotaId){
   const c=d.cuotas.find(x=>x.id===cuotaId); if(!c)return;
   c.pagada=!c.pagada;
   d.pagado=d.cuotas.filter(x=>x.pagada).reduce((s,x)=>s+x.importe,0);
-  save(); renderDebts(); updateDebtBadge(); render();
+  save(); renderDebts(); updateDebtBadge(); render(); renderEstadoGlobal();
 }
 
 function deleteDebt(id){
   if(!confirm('¿Eliminar deuda?'))return;
   window.debts=window.debts.filter(d=>d.id!==id);
-  save(); renderDebts(); updateDebtBadge(); render(); renderContacts();
+  save(); renderDebts(); updateDebtBadge(); render(); renderContacts(); renderEstadoGlobal();
 }
 function deleteCuota(debtId,cuotaId){
   const d=window.debts.find(x=>x.id===debtId); if(!d)return;
   d.cuotas=d.cuotas.filter(c=>c.id!==cuotaId);
   d.pagado=d.cuotas.filter(x=>x.pagada).reduce((s,x)=>s+x.importe,0);
-  save(); renderDebts();
+  save(); renderDebts(); renderEstadoGlobal();
 }
 
 function updateDebtBadge(){
@@ -1177,6 +1190,157 @@ function debtNetBalance(){
   const medeben=window.debts.filter(d=>d.dir==='medeben').reduce((s,d)=>s+Math.max(0,d.total-d.pagado),0);
   const debo=window.debts.filter(d=>d.dir==='debo').reduce((s,d)=>s+Math.max(0,d.total-d.pagado),0);
   return{medeben,debo,neto:medeben-debo};
+}
+
+function showDeudaTab(tab){
+  ['resumen','estado'].forEach(t=>{
+    document.getElementById(`deudatab-${t}`).classList.toggle('active',t===tab);
+    document.getElementById(`deudatab-content-${t}`).style.display=t===tab?'block':'none';
+  });
+  if(tab==='estado') renderEstadoGlobal();
+}
+
+function renderEstadoGlobal(){
+  const el=document.getElementById('debt-estado-global'); if(!el)return;
+  const MNAMES=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const today=new Date().toISOString().slice(0,10);
+  const todayDate=new Date(today);
+
+  // Solo deudas con plazo y pendientes
+  const deudas=window.debts.filter(d=>d.plazo==='conplazo'&&Math.max(0,d.total-d.pagado)>0.01);
+
+  if(!deudas.length){
+    el.innerHTML='<div class="info-box">No hay deudas con plazo activas.</div>';
+    return;
+  }
+
+  // Agregar todas las cuotas pendientes de todas las deudas por mes
+  const byMonth={};
+  deudas.forEach(d=>{
+    d.cuotas.filter(c=>!c.pagada&&c.tipo==='cuota').forEach(c=>{
+      const ym=c.fecha.slice(0,7);
+      if(!byMonth[ym])byMonth[ym]={total:0,deudas:{},vencidas:0};
+      byMonth[ym].total=Math.round((byMonth[ym].total+c.importe)*100)/100;
+      if(!byMonth[ym].deudas[d.nombre])byMonth[ym].deudas[d.nombre]=0;
+      byMonth[ym].deudas[d.nombre]=Math.round((byMonth[ym].deudas[d.nombre]+c.importe)*100)/100;
+      if(c.fecha<today) byMonth[ym].vencidas++;
+    });
+  });
+
+  const allMonths=Object.keys(byMonth).sort();
+  if(!allMonths.length){el.innerHTML='<div class="info-box">No hay cuotas pendientes.</div>';return;}
+
+  const totalPendienteGlobal=deudas.reduce((s,d)=>s+Math.max(0,d.total-d.pagado),0);
+  const maxMes=Math.max(...allMonths.map(ym=>byMonth[ym].total));
+
+  // Próximos 3 meses desde hoy
+  const prox3=[];
+  for(let i=0;i<3;i++){
+    const d=new Date(todayDate); d.setMonth(d.getMonth()+i);
+    prox3.push(d.toISOString().slice(0,7));
+  }
+  const totalProx3=prox3.reduce((s,ym)=>s+(byMonth[ym]?.total||0),0);
+  const pctProx3=totalPendienteGlobal>0?Math.round((totalProx3/totalPendienteGlobal)*100):0;
+
+  // Métricas globales
+  const metricasHTML=`
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">
+      <div class="metric" style="border-top:2px solid var(--accent)">
+        <div class="metric-label"><span class="metric-dot a"></span>Capital pendiente total</div>
+        <div class="metric-val a">${fmt(totalPendienteGlobal)}</div>
+        <div class="metric-sub">${deudas.length} deuda${deudas.length!==1?'s':''} activas</div>
+      </div>
+      <div class="metric" style="border-top:2px solid var(--amber)">
+        <div class="metric-label"><span class="metric-dot am"></span>Próximos 3 meses</div>
+        <div class="metric-val am">${fmt(totalProx3)}</div>
+        <div class="metric-sub">${pctProx3}% del total pendiente</div>
+      </div>
+      <div class="metric" style="border-top:2px solid var(--green)">
+        <div class="metric-label"><span class="metric-dot g"></span>Meses con pagos</div>
+        <div class="metric-val">${allMonths.length}</div>
+        <div class="metric-sub">hasta ${(()=>{const l=allMonths[allMonths.length-1];const[y,m]=l.split('-').map(Number);return MNAMES[m-1]+' '+y;})()} </div>
+      </div>
+      <div class="metric" style="border-top:2px solid var(--red)">
+        <div class="metric-label"><span class="metric-dot r"></span>Cuota media mensual</div>
+        <div class="metric-val r">${fmt(Math.round(totalPendienteGlobal/allMonths.length))}</div>
+        <div class="metric-sub">promedio entre meses activos</div>
+      </div>
+    </div>`;
+
+  // Sección próximos 3 meses detallada
+  const prox3HTML=`
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-title">Próximos 3 meses — desglose por deuda</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:4px">
+        ${prox3.map(ym=>{
+          const [y,m]=ym.split('-').map(Number);
+          const label=MNAMES[m-1]+' '+y;
+          const data=byMonth[ym];
+          const imp=data?.total||0;
+          const barPct=maxMes>0?Math.round((imp/maxMes)*100):0;
+          if(!imp) return`<div style="background:var(--surface2);border-radius:10px;padding:14px">
+            <div style="font-size:13px;font-weight:500;margin-bottom:8px;color:var(--muted)">${label}</div>
+            <div style="font-size:20px;font-weight:600;font-family:var(--mono);color:var(--muted2)">€0,00</div>
+            <div style="font-size:11px;color:var(--muted2);margin-top:4px">Sin pagos</div>
+          </div>`;
+          const desglose=Object.entries(data.deudas).map(([nombre,amt])=>
+            `<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid var(--border)">
+              <span style="color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%">${nombre}</span>
+              <span style="font-family:var(--mono);color:var(--text)">${fmt(amt)}</span>
+            </div>`
+          ).join('');
+          return`<div style="background:var(--surface2);border-radius:10px;padding:14px;border:1px solid var(--border)">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+              <div style="font-size:13px;font-weight:500">${label}</div>
+              <div style="font-size:20px;font-weight:600;font-family:var(--mono);color:var(--amber)">${fmt(imp)}</div>
+            </div>
+            <div style="height:4px;background:var(--surface3);border-radius:2px;overflow:hidden;margin-bottom:10px">
+              <div style="height:100%;width:${barPct}%;background:var(--amber);border-radius:2px"></div>
+            </div>
+            ${desglose}
+            <div style="font-size:10px;color:var(--muted2);margin-top:6px">${pctProx3>0?Math.round((imp/totalPendienteGlobal)*100):0}% del capital pendiente total</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+
+  // Calendario completo mes a mes
+  const calendarioHTML=`
+    <div class="card">
+      <div class="card-title">Calendario completo de pagos</div>
+      <div style="margin-top:4px">
+        ${allMonths.map(ym=>{
+          const [y,m]=ym.split('-').map(Number);
+          const label=MNAMES[m-1]+' '+y;
+          const data=byMonth[ym];
+          const imp=data.total;
+          const barPct=maxMes>0?Math.min(100,(imp/maxMes)*100):0;
+          const isProx=prox3.includes(ym);
+          const isPast=ym<today.slice(0,7);
+          const venc=data.vencidas>0;
+          const rowBg=isPast?'rgba(239,68,68,.04)':isProx?'rgba(245,158,11,.05)':'transparent';
+          const desglose=Object.entries(data.deudas).map(([nombre,amt])=>
+            `<span style="font-size:11px;color:var(--muted)">${nombre}: <strong style="color:var(--text)">${fmt(amt)}</strong></span>`
+          ).join(' · ');
+          return`<div style="display:grid;grid-template-columns:90px 1fr auto;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);background:${rowBg};border-radius:4px">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="font-size:12px;font-weight:500;color:${isPast?'var(--red)':isProx?'var(--amber)':'var(--text)'}">${label}</span>
+              ${isProx?'<span style="font-size:9px;background:var(--amber-dim);color:var(--amber);padding:1px 5px;border-radius:4px">próximo</span>':''}
+              ${isPast&&venc?'<span style="font-size:9px;background:var(--red-dim);color:var(--red);padding:1px 5px;border-radius:4px">vencido</span>':''}
+            </div>
+            <div>
+              <div style="height:5px;background:var(--surface3);border-radius:3px;overflow:hidden;margin-bottom:4px">
+                <div style="height:100%;width:${barPct.toFixed(1)}%;background:${isPast?'var(--red)':isProx?'var(--amber)':'var(--accent)'};border-radius:3px;opacity:${isPast?.5:1}"></div>
+              </div>
+              <div style="font-size:11px;color:var(--muted2)">${desglose}</div>
+            </div>
+            <div style="font-family:var(--mono);font-size:13px;font-weight:600;color:${isPast?'var(--red)':isProx?'var(--amber)':'var(--text)'};text-align:right;white-space:nowrap">${fmt(imp)}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+
+  el.innerHTML=metricasHTML+prox3HTML+calendarioHTML;
 }
 
 function switchDebtTab(debtId, tab){
