@@ -839,7 +839,7 @@ function buildAllSelects(){
   fillSelect(document.getElementById('f-wallet-trf-to'),window.wallets,'Cuenta destino…','id','nombre');
 }
 function buildDebtSelects(){
-  const allEntities=[...window.wallets,...window.contacts];
+  const allEntities=[...window.contacts];
   fillSelect(document.getElementById('d-contraparte'),allEntities,'Selecciona…','id','nombre');
   // cat deudas
   const dcat=document.getElementById('d-cat');
@@ -1005,7 +1005,7 @@ function addDebt(){
   const nombre=document.getElementById('d-nombre').value.trim();
   const dir=document.getElementById('d-dir').value;
   const contraparteId=parseInt(document.getElementById('d-contraparte').value)||null;
-  const allEntities=[...window.wallets,...window.contacts];
+  const allEntities=[...window.contacts];
   const contraparteNombre=allEntities.find(e=>e.id===contraparteId)?.nombre||'—';
   const cat=document.getElementById('d-cat').value||'—';
   const total=parseFloat(document.getElementById('d-total').value);
