@@ -413,7 +413,7 @@ tbody tr:hover td{background:rgba(255,255,255,.02)}
       </div>
     </div>
     <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;margin-bottom:10px">
-      <div class="field"><label>Importe total (€)</label><input type="number" id="d-total" placeholder="0,00" step="0.01" min="0"/></div>
+      <div class="field"><label>Importe total (€)</label><input type="number" id="d-total" placeholder="0,00" step="0.01" min="0" oninput="calcCuotas()"/></div>
       <div class="field"><label>Plazo</label>
         <select id="d-plazo" onchange="renderDebtPlazo()">
           <option value="sinplazo">Sin plazo definido</option>
@@ -425,14 +425,6 @@ tbody tr:hover td{background:rgba(255,255,255,.02)}
     </div>
     <!-- PLAZO FIELDS -->
     <div id="plazo-fields" class="form-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;margin-bottom:10px;display:none">
-      <div class="field"><label>Tipo de cuotas</label>
-        <select id="d-cuota-tipo">
-          <option value="numero">Definir nº de cuotas</option>
-          <option value="importe">Definir importe por cuota</option>
-        </select>
-      </div>
-      <div class="field" id="pf-ncuotas"><label>Nº de cuotas mensuales</label><input type="number" id="d-ncuotas" placeholder="12" min="1"/></div>
-      <div class="field" id="pf-impcuota"><label>Importe por cuota (€)</label><input type="number" id="d-cuota" placeholder="0,00" step="0.01" min="0"/></div>
       <div class="field"><label>Periodicidad</label>
         <select id="d-period">
           <option value="1">Mensual</option>
@@ -441,6 +433,9 @@ tbody tr:hover td{background:rgba(255,255,255,.02)}
           <option value="12">Anual</option>
         </select>
       </div>
+      <div class="field"><label>Importe por cuota (€)</label><input type="number" id="d-cuota" placeholder="0,00" step="0.01" min="0" oninput="calcCuotas()"/></div>
+      <div class="field"><label>Nº de cuotas</label><input type="number" id="d-ncuotas" placeholder="Auto" min="1" oninput="calcCuotas()"/></div>
+      <div class="field"><label style="color:var(--accent)">Vista previa</label><div id="cuotas-preview" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:12px;color:var(--muted);font-family:var(--mono)">—</div></div>
     </div>
     <div style="display:flex;justify-content:flex-end"><button class="btn btn-primary" onclick="addDebt()">Crear deuda</button></div>
   </div>
@@ -663,7 +658,6 @@ function initApp(){
   initSelectors();
   document.getElementById('f-fecha').value=now.toISOString().slice(0,10);
   document.getElementById('d-inicio').value=now.toISOString().slice(0,10);
-  document.getElementById('d-cuota-tipo').addEventListener('change',renderDebtCuotaTipo);
   setPeriod('mes'); render(); updateDebtBadge();
 }
 
@@ -988,16 +982,61 @@ function renderTable(){
 /* ---- DEBT FORM HELPERS ---- */
 function renderDebtDir(){
   const dir=document.getElementById('d-dir').value;
-  document.getElementById('d-contraparte-lbl').textContent=dir==='debo'?'Acreedor (me lo debe)':'Deudor (me lo debe)';
+  document.getElementById('d-contraparte-lbl').textContent=dir==='debo'?'Acreedor':'Deudor';
 }
 function renderDebtPlazo(){
   const p=document.getElementById('d-plazo').value;
   document.getElementById('plazo-fields').style.display=p==='conplazo'?'grid':'none';
+  calcCuotas();
 }
-function renderDebtCuotaTipo(){
-  const t=document.getElementById('d-cuota-tipo').value;
-  document.getElementById('pf-ncuotas').style.display=t==='numero'?'flex':'none';
-  document.getElementById('pf-impcuota').style.display=t==='importe'?'flex':'none';
+function calcCuotas(){
+  const total=parseFloat(document.getElementById('d-total').value)||0;
+  const cuota=parseFloat(document.getElementById('d-cuota').value)||0;
+  const ncuotas=parseInt(document.getElementById('d-ncuotas').value)||0;
+  const prev=document.getElementById('cuotas-preview');
+  if(!prev)return;
+  if(total<=0){prev.textContent='Introduce el importe total';return;}
+  if(cuota>0&&ncuotas<=0){
+    // calcular nº cuotas desde importe
+    const n=Math.ceil(total/cuota);
+    const resto=Math.round((total-cuota*(n-1))*100)/100;
+    prev.textContent=`${n} cuotas · ${fmt(cuota)}/cuota · última ${fmt(resto)}`;
+    prev.style.color='var(--accent)';
+  } else if(ncuotas>0&&cuota<=0){
+    // calcular importe desde nº cuotas
+    const imp=Math.round((total/ncuotas)*100)/100;
+    const resto=Math.round((total-imp*(ncuotas-1))*100)/100;
+    prev.textContent=`${ncuotas} cuotas · ${fmt(imp)}/cuota · última ${fmt(resto)}`;
+    prev.style.color='var(--accent)';
+  } else if(cuota>0&&ncuotas>0){
+    const cubierto=Math.round(cuota*ncuotas*100)/100;
+    const diff=Math.round((total-cubierto)*100)/100;
+    if(Math.abs(diff)>0.01) prev.textContent=`⚠ ${ncuotas}×${fmt(cuota)}=${fmt(cubierto)} ≠ ${fmt(total)}`;
+    else prev.textContent=`✓ ${ncuotas} cuotas de ${fmt(cuota)}`;
+    prev.style.color=Math.abs(diff)>0.01?'var(--amber)':'var(--green)';
+  } else {
+    prev.textContent='Introduce cuota o nº de cuotas';
+    prev.style.color='var(--muted)';
+  }
+}
+
+function buildCuotas(total, cuota, ncuotas, inicio, periodMeses){
+  let n=ncuotas, imp=cuota;
+  if(n>0&&imp<=0) imp=Math.round((total/n)*100)/100;
+  if(imp>0&&n<=0) n=Math.ceil(total/imp);
+  if(n<=0||imp<=0||!inicio) return [];
+  const inicioDate=new Date(inicio);
+  const diaInicio=inicioDate.getDate();
+  const cuotas=[];
+  for(let i=0;i<n;i++){
+    const d=new Date(inicio);
+    d.setMonth(d.getMonth()+i*periodMeses);
+    if(diaInicio!==1) d.setDate(1); // por defecto dia 1 del mes
+    const esUltima=i===n-1;
+    const c=esUltima?Math.round((total-imp*(n-1))*100)/100:Math.round(imp*100)/100;
+    cuotas.push({id:Date.now()+i,fecha:d.toISOString().slice(0,10),importe:c,desc:`Cuota ${i+1}/${n}`,pagada:false,tipo:'cuota'});
+  }
+  return cuotas;
 }
 
 /* ---- DEBTS ---- */
@@ -1005,8 +1044,7 @@ function addDebt(){
   const nombre=document.getElementById('d-nombre').value.trim();
   const dir=document.getElementById('d-dir').value;
   const contraparteId=parseInt(document.getElementById('d-contraparte').value)||null;
-  const allEntities=[...window.contacts];
-  const contraparteNombre=allEntities.find(e=>e.id===contraparteId)?.nombre||'—';
+  const contraparteNombre=[...window.contacts].find(e=>e.id===contraparteId)?.nombre||'—';
   const cat=document.getElementById('d-cat').value||'—';
   const total=parseFloat(document.getElementById('d-total').value);
   const plazo=document.getElementById('d-plazo').value;
@@ -1016,31 +1054,85 @@ function addDebt(){
 
   let cuotas=[];
   if(plazo==='conplazo'){
-    const cuotaTipo=document.getElementById('d-cuota-tipo').value;
+    const cuota=parseFloat(document.getElementById('d-cuota').value)||0;
+    const ncuotas=parseInt(document.getElementById('d-ncuotas').value)||0;
     const periodMeses=parseInt(document.getElementById('d-period').value)||1;
-    let nCuotas=0, impCuota=0;
-    if(cuotaTipo==='numero'){
-      nCuotas=parseInt(document.getElementById('d-ncuotas').value)||0;
-      impCuota=nCuotas>0?total/nCuotas:0;
-    } else {
-      impCuota=parseFloat(document.getElementById('d-cuota').value)||0;
-      nCuotas=impCuota>0?Math.ceil(total/impCuota):0;
-    }
-    if(nCuotas>0&&impCuota>0&&inicio){
-      for(let i=0;i<nCuotas;i++){
-        const d=new Date(inicio);
-        d.setMonth(d.getMonth()+i*periodMeses);
-        const esUltima=i===nCuotas-1;
-        const imp=esUltima?Math.round((total-(impCuota*(nCuotas-1)))*100)/100:Math.round(impCuota*100)/100;
-        cuotas.push({id:Date.now()+i,fecha:d.toISOString().slice(0,10),importe:imp,desc:`Cuota ${i+1}/${nCuotas}`,pagada:false});
-      }
-    }
+    cuotas=buildCuotas(total,cuota,ncuotas,inicio,periodMeses);
+    if(!cuotas.length){alert('Introduce cuota o nº de cuotas, y fecha de inicio');return;}
   }
 
   window.debts.push({id:Date.now(),nombre,dir,contraparteId,contraparteNombre,cat,total,plazo,desc,cuotas,pagado:0,fecha:inicio||now.toISOString().slice(0,10)});
   save();
   ['d-nombre','d-total','d-ncuotas','d-cuota','d-desc'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  document.getElementById('cuotas-preview').textContent='—';
   renderDebts(); updateDebtBadge(); renderContacts();
+}
+
+/* ---- AMORTIZACIÓN PARCIAL ---- */
+function amortizarParcial(debtId){
+  const d=window.debts.find(x=>x.id===debtId); if(!d)return;
+  const imp=parseFloat(document.getElementById(`am-imp-${debtId}`).value);
+  const fecha=document.getElementById(`am-fecha-${debtId}`).value;
+  const modalidad=document.getElementById(`am-modalidad-${debtId}`).value; // 'importe' | 'plazo'
+  if(!fecha||isNaN(imp)||imp<=0){alert('Fecha e importe requeridos');return;}
+  const restante=Math.max(0,d.total-d.pagado);
+  if(imp>restante+0.01){alert(`El importe supera el capital pendiente (${fmt(restante)})`);return;}
+
+  d.cuotas.push({id:Date.now(),fecha,importe:imp,desc:`Amortización parcial (reduce ${modalidad==='importe'?'cuota':'plazo'})`,pagada:true,tipo:'amortizacion'});
+  d.pagado=Math.round((d.pagado+imp)*100)/100;
+
+  if(d.plazo==='conplazo'){
+    const nuevoCapital=Math.max(0,d.total-d.pagado);
+    const cuotasPendientes=d.cuotas.filter(c=>!c.pagada&&c.tipo==='cuota');
+    if(nuevoCapital<=0.01){
+      cuotasPendientes.forEach(c=>{c.pagada=true;c.importe=0;});
+    } else if(cuotasPendientes.length>0){
+      if(modalidad==='importe'){
+        // Mismas cuotas, menor importe por cuota
+        const impNuevo=Math.round((nuevoCapital/cuotasPendientes.length)*100)/100;
+        cuotasPendientes.forEach((c,i)=>{
+          const esUltima=i===cuotasPendientes.length-1;
+          c.importe=esUltima?Math.round((nuevoCapital-impNuevo*(cuotasPendientes.length-1))*100)/100:impNuevo;
+          c.desc=c.desc.split('(')[0].trim()+' (↓ cuota)';
+        });
+      } else {
+        // Mismo importe por cuota, eliminar cuotas sobrantes del final
+        const impCuota=cuotasPendientes[0].importe;
+        const nNecesarias=Math.ceil(nuevoCapital/impCuota);
+        // Eliminar las cuotas que sobran (las últimas)
+        const sobrantes=cuotasPendientes.slice(nNecesarias);
+        sobrantes.forEach(c=>{
+          const idx=d.cuotas.indexOf(c);
+          if(idx>-1) d.cuotas.splice(idx,1);
+        });
+        // Ajustar última cuota restante
+        const nuevasPendientes=d.cuotas.filter(c=>!c.pagada&&c.tipo==='cuota');
+        if(nuevasPendientes.length>0){
+          const ultima=nuevasPendientes[nuevasPendientes.length-1];
+          ultima.importe=Math.round((nuevoCapital-impCuota*(nuevasPendientes.length-1))*100)/100;
+          ultima.desc=ultima.desc.split('(')[0].trim()+' (↓ plazo)';
+        }
+      }
+    }
+  }
+
+  save(); renderDebts(); updateDebtBadge(); render();
+}
+
+/* ---- CANCELACIÓN ANTICIPADA ---- */
+function cancelarDeuda(debtId){
+  const d=window.debts.find(x=>x.id===debtId); if(!d)return;
+  const restante=Math.max(0,d.total-d.pagado);
+  const impEl=document.getElementById(`cancel-imp-${debtId}`);
+  const fechaEl=document.getElementById(`cancel-fecha-${debtId}`);
+  const impCancel=impEl?parseFloat(impEl.value)||restante:restante;
+  const fechaCancel=fechaEl?.value||new Date().toISOString().slice(0,10);
+  if(isNaN(impCancel)||impCancel<=0){alert('Introduce el importe de cancelación');return;}
+  if(!confirm(`¿Cancelar anticipadamente "${d.nombre}"?\nImporte: ${fmt(impCancel)}`))return;
+  d.cuotas.filter(c=>!c.pagada).forEach(c=>c.pagada=true);
+  d.cuotas.push({id:Date.now(),fecha:fechaCancel,importe:impCancel,desc:'Cancelación anticipada',pagada:true,tipo:'cancelacion'});
+  d.pagado=d.total;
+  save(); renderDebts(); updateDebtBadge(); render();
 }
 
 function addCuotaLibre(debtId){
@@ -1049,8 +1141,9 @@ function addCuotaLibre(debtId){
   const desc=document.getElementById(`cl-desc-${debtId}`).value.trim();
   if(!fecha||isNaN(imp)||imp<=0){alert('Fecha e importe requeridos');return;}
   const d=window.debts.find(x=>x.id===debtId); if(!d)return;
-  d.cuotas.push({id:Date.now(),fecha,importe:imp,desc:desc||'Pago',pagada:false});
-  save(); renderDebts();
+  d.cuotas.push({id:Date.now(),fecha,importe:imp,desc:desc||'Pago',pagada:true,tipo:'libre'});
+  d.pagado=Math.round((d.pagado+imp)*100)/100;
+  save(); renderDebts(); updateDebtBadge(); render();
 }
 
 function toggleCuota(debtId,cuotaId){
@@ -1107,58 +1200,91 @@ function renderDebts(){
     const pct=Math.min(100,d.total>0?(d.pagado/d.total)*100:0);
     const vencidas=d.cuotas.filter(c=>!c.pagada&&c.fecha<today).length;
     const colorClass=d.dir==='debo'?'debo':'medeben';
+    const liquidada=restante<=0.01;
 
     const cuotasHTML=d.cuotas.length?d.cuotas.map(c=>{
       const venc=!c.pagada&&c.fecha<today;
-      return`<div class="cuota-row">
+      const isExtra=c.tipo==='amortizacion'||c.tipo==='cancelacion'||c.tipo==='libre';
+      const rowStyle=isExtra?'background:rgba(255,255,255,.03);border-radius:6px;':'';
+      return`<div class="cuota-row" style="${rowStyle}">
         <span class="cuota-fecha">${c.fecha}</span>
-        <span class="cuota-desc">${c.desc}</span>
+        <span class="cuota-desc">${c.desc}${isExtra?` <span style="font-size:10px;color:var(--muted2)">[extra]</span>`:''}</span>
         <span class="cuota-amt" style="color:var(--${d.dir==='debo'?'red':'green'})">${fmt(c.importe)}</span>
         <div class="cuota-actions">
-          <span class="badge ${c.pagada?'ok':venc?'venc':'pend'}">${c.pagada?'Pagada':venc?'Vencida':'Pendiente'}</span>
-          <button class="btn btn-xs ${c.pagada?'btn-ghost':'btn-success'}" onclick="toggleCuota(${d.id},${c.id})">${c.pagada?'Desmarcar':'✓ Pagar'}</button>
+          ${isExtra
+            ? `<span class="badge ok">Pagado</span>`
+            : `<span class="badge ${c.pagada?'ok':venc?'venc':'pend'}">${c.pagada?'Pagada':venc?'Vencida':'Pendiente'}</span>
+               <button class="btn btn-xs ${c.pagada?'btn-ghost':'btn-success'}" onclick="toggleCuota(${d.id},${c.id})">${c.pagada?'Desmarcar':'✓ Pagar'}</button>`
+          }
           <button class="del-btn" onclick="deleteCuota(${d.id},${c.id})">✕</button>
         </div>
       </div>`;
     }).join(''):'<div style="font-size:12px;color:var(--muted2);padding:4px 0">Sin cuotas definidas.</div>';
 
-    const addLibreHTML=d.plazo==='sinplazo'||d.plazo==='conplazo'?`<div class="add-cuota-row" style="margin-top:10px">
-      <input type="date" id="cl-fecha-${d.id}" style="flex:0 0 130px"/>
-      <input type="number" id="cl-imp-${d.id}" placeholder="Importe €" step="0.01" style="flex:0 0 110px"/>
-      <input type="text" id="cl-desc-${d.id}" placeholder="Descripción" style="flex:1"/>
-      <button class="btn btn-sm btn-ghost" onclick="addCuotaLibre(${d.id})">+ Registrar pago</button>
-    </div>`:'';
+    const accionesHTML=liquidada?
+      `<div style="text-align:center;padding:10px;font-size:13px;color:var(--green);font-weight:500">✓ Deuda liquidada</div>`
+    :`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
+        <div>
+          <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Registrar pago / cuota</div>
+          <div class="add-cuota-row">
+            <input type="date" id="cl-fecha-${d.id}" style="flex:0 0 120px" value="${today}"/>
+            <input type="number" id="cl-imp-${d.id}" placeholder="Importe €" step="0.01" style="flex:0 0 100px"/>
+            <input type="text" id="cl-desc-${d.id}" placeholder="Descripción" style="flex:1"/>
+            <button class="btn btn-sm btn-success" onclick="addCuotaLibre(${d.id})">✓ Pagar</button>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--amber);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Amortización parcial</div>
+          <div class="add-cuota-row" style="margin-bottom:6px">
+            <input type="date" id="am-fecha-${d.id}" style="flex:0 0 120px" value="${today}"/>
+            <input type="number" id="am-imp-${d.id}" placeholder="Capital €" step="0.01" style="flex:1"/>
+            <select id="am-modalidad-${d.id}" style="flex:0 0 130px;font-size:12px;padding:5px 8px">
+              <option value="importe">Reducir cuota</option>
+              <option value="plazo">Reducir plazo</option>
+            </select>
+            <button class="btn btn-sm btn-ghost" style="border-color:rgba(245,158,11,.3);color:var(--amber)" onclick="amortizarParcial(${d.id})">Amortizar</button>
+          </div>
+          <div style="font-size:11px;color:var(--muted2);margin-bottom:8px">Capital pendiente: <strong style="color:var(--text)">${fmt(restante)}</strong></div>
+          <div style="font-size:11px;color:var(--red);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Cancelación anticipada</div>
+          <div class="add-cuota-row">
+            <input type="date" id="cancel-fecha-${d.id}" style="flex:0 0 120px" value="${today}"/>
+            <input type="number" id="cancel-imp-${d.id}" placeholder="Importe cancelación" step="0.01" value="${restante.toFixed(2)}" style="flex:1"/>
+            <button class="btn btn-sm btn-danger" onclick="cancelarDeuda(${d.id})">Cancelar deuda</button>
+          </div>
+        </div>
+      </div>`;
 
-    return`<div class="debt-card ${colorClass}-card" style="${vencidas?'border-color:'+( d.dir==='debo'?'var(--red)':'var(--green)'):''}">
+    return`<div class="debt-card ${colorClass}-card" style="${vencidas&&!liquidada?'border-color:'+( d.dir==='debo'?'var(--red)':'var(--green)'):''}">
       <div class="debt-header">
         <div class="debt-header-left">
           <div class="debt-name">
             ${d.nombre}
-            <span class="badge ${colorClass}" style="font-size:10px;margin-left:4px">${d.dir==='debo'?'Debo':'Me deben'}</span>
+            <span class="badge ${liquidada?'ok':colorClass}" style="font-size:10px;margin-left:4px">${liquidada?'Liquidada':d.dir==='debo'?'Debo':'Me deben'}</span>
             <span class="badge" style="font-size:10px;background:var(--surface2);color:var(--muted);margin-left:2px">${d.plazo==='conplazo'?'Con plazo':'Sin plazo'}</span>
           </div>
           <div class="debt-meta">
             <span class="debt-meta-item">👤 ${d.contraparteNombre}</span>
             ${d.cat&&d.cat!=='—'?`<span class="debt-meta-item">📂 ${d.cat}</span>`:''}
             ${d.fecha?`<span class="debt-meta-item">📅 ${d.fecha}</span>`:''}
-            ${vencidas?`<span class="debt-meta-item" style="color:var(--red)">⚠ ${vencidas} vencida${vencidas>1?'s':''}</span>`:''}
+            ${vencidas&&!liquidada?`<span class="debt-meta-item" style="color:var(--red)">⚠ ${vencidas} vencida${vencidas>1?'s':''}</span>`:''}
           </div>
           ${d.desc?`<div style="font-size:12px;color:var(--muted);margin-top:4px">${d.desc}</div>`:''}
         </div>
         <div class="debt-amounts">
           <div class="debt-total-lbl">Total: ${fmt(d.total)}</div>
-          <div class="debt-remaining ${colorClass}">${fmt(restante)}</div>
+          <div class="debt-remaining ${liquidada?'medeben':colorClass}">${fmt(restante)}</div>
           <div style="font-size:10px;color:var(--muted2)">${pct.toFixed(0)}% pagado</div>
         </div>
         <button class="del-btn" onclick="deleteDebt(${d.id})">✕</button>
       </div>
-      <div class="debt-progress"><div class="debt-progress-bar ${colorClass}" style="width:${pct}%"></div></div>
+      <div class="debt-progress"><div class="debt-progress-bar ${liquidada?'medeben':colorClass}" style="width:${pct}%"></div></div>
       <div class="debt-cuotas">
-        <div class="debt-cuotas-title">Cuotas / pagos registrados</div>
+        <div class="debt-cuotas-title">Cuotas / pagos</div>
         ${cuotasHTML}
-        ${addLibreHTML}
       </div>
+      ${accionesHTML}
     </div>`;
+
   }
 
   let html='';
