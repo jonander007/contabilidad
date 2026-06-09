@@ -363,11 +363,8 @@ tbody tr:hover td{background:rgba(255,255,255,.02)}
 
     <!-- FLUJO DEUDA -->
     <div id="flow-deu" class="flow-builder" style="display:none">
-      <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:10px">
-        <div class="field">
-          <label>Deuda</label>
-          <select id="f-deuda-sel" onchange="onDeudaSelChange()"><option value="">Selecciona deuda…</option></select>
-        </div>
+      <!-- Acción primero -->
+      <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-bottom:12px">
         <div class="field">
           <label>Acción</label>
           <select id="f-deuda-accion" onchange="onDeudaAccionChange()">
@@ -382,14 +379,41 @@ tbody tr:hover td{background:rgba(255,255,255,.02)}
           <select id="f-deuda-wallet"><option value="">Selecciona cuenta…</option></select>
         </div>
       </div>
-      <div id="deu-info" style="background:var(--surface2);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--muted);margin-bottom:8px;display:none"></div>
-      <div id="deu-amort-opts" style="display:none">
-        <div class="field" style="max-width:200px">
-          <label>Modalidad amortización</label>
-          <select id="f-deuda-amort-mod">
-            <option value="importe">Reducir cuota</option>
-            <option value="plazo">Reducir plazo</option>
-          </select>
+
+      <!-- NUEVA DEUDA: campos básicos -->
+      <div id="deu-nueva-fields">
+        <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:8px">
+          <div class="field"><label>Nombre de la deuda</label><input type="text" id="f-deuda-nombre" placeholder="Ej: Préstamo coche…"/></div>
+          <div class="field"><label>Dirección</label>
+            <select id="f-deuda-dir">
+              <option value="debo">Yo debo (me lo han prestado)</option>
+              <option value="medeben">Me deben (lo he prestado yo)</option>
+            </select>
+          </div>
+          <div class="field"><label>Contraparte</label>
+            <select id="f-deuda-contraparte"><option value="">Selecciona…</option></select>
+          </div>
+        </div>
+        <div class="info-box" style="font-size:11px">ℹ El plazo y cuotas los configuras luego desde la pestaña <strong style="cursor:pointer;text-decoration:underline" onclick="showView('deudas')">Deudas</strong>.</div>
+      </div>
+
+      <!-- DEUDA EXISTENTE: selector + info -->
+      <div id="deu-existente-fields" style="display:none">
+        <div class="form-grid" style="grid-template-columns:1fr;margin-bottom:8px">
+          <div class="field">
+            <label>Selecciona deuda</label>
+            <select id="f-deuda-sel" onchange="onDeudaSelChange()"><option value="">Selecciona deuda…</option></select>
+          </div>
+        </div>
+        <div id="deu-info" style="background:var(--surface2);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--muted);margin-bottom:8px;display:none"></div>
+        <div id="deu-amort-opts" style="display:none">
+          <div class="field" style="max-width:220px">
+            <label>Modalidad amortización</label>
+            <select id="f-deuda-amort-mod">
+              <option value="importe">Reducir cuota</option>
+              <option value="plazo">Reducir plazo</option>
+            </select>
+          </div>
         </div>
       </div>
     </div>
@@ -932,21 +956,34 @@ function setType(t){
 }
 
 function buildDeudaFormSelects(){
+  // Contraparte para nueva deuda
+  fillSelect(document.getElementById('f-deuda-contraparte'),window.contacts,'Selecciona…','id','nombre');
+  // Deudas existentes activas
   const sel=document.getElementById('f-deuda-sel');
-  if(!sel)return;
-  const prev=sel.value;
-  sel.innerHTML='<option value="">Selecciona deuda…</option>';
-  window.debts.filter(d=>Math.max(0,d.total-d.pagado)>0.01).forEach(d=>{
-    const restante=Math.max(0,d.total-d.pagado);
-    sel.add(new Option(`${d.nombre} (${d.dir==='debo'?'Debo':'Me deben'} ${fmt(restante)})`, d.id));
-  });
-  if(prev) sel.value=prev;
+  if(sel){
+    const prev=sel.value;
+    sel.innerHTML='<option value="">Selecciona deuda…</option>';
+    window.debts.filter(d=>Math.max(0,d.total-d.pagado)>0.01).forEach(d=>{
+      const restante=Math.max(0,d.total-d.pagado);
+      sel.add(new Option(`${d.nombre} — ${fmt(restante)} pendiente`,d.id));
+    });
+    if(prev) sel.value=prev;
+  }
   fillSelect(document.getElementById('f-deuda-wallet'),window.wallets,'Selecciona cuenta…','id','nombre');
-  onDeudaSelChange();
+  onDeudaAccionChange();
+}
+
+function onDeudaAccionChange(){
+  const accion=document.getElementById('f-deuda-accion').value;
+  const isNueva=accion==='nueva';
+  document.getElementById('deu-nueva-fields').style.display=isNueva?'block':'none';
+  document.getElementById('deu-existente-fields').style.display=isNueva?'none':'block';
+  document.getElementById('deu-amort-opts').style.display=accion==='amortizacion'?'block':'none';
+  if(!isNueva) onDeudaSelChange();
 }
 
 function onDeudaSelChange(){
-  const debtId=parseInt(document.getElementById('f-deuda-sel').value)||null;
+  const debtId=parseInt(document.getElementById('f-deuda-sel')?.value)||null;
   const info=document.getElementById('deu-info');
   if(!debtId||!info){if(info)info.style.display='none';return;}
   const d=window.debts.find(x=>x.id===debtId);
@@ -955,21 +992,13 @@ function onDeudaSelChange(){
   const pct=d.total>0?((d.pagado/d.total)*100).toFixed(0):0;
   const proxCuota=d.cuotas.find(c=>!c.pagada&&c.tipo==='cuota');
   info.style.display='block';
-  info.innerHTML=`<strong>${d.nombre}</strong> · ${d.dir==='debo'?'Debes':'Te deben'} <strong style="color:${d.dir==='debo'?'var(--red)':'var(--green)'}">${fmt(restante)}</strong> · ${pct}% pagado`+
+  info.innerHTML=`<strong>${d.nombre}</strong> · ${d.dir==='debo'?'Debes':'Te deben'} `+
+    `<strong style="color:${d.dir==='debo'?'var(--red)':'var(--green)'}">${fmt(restante)}</strong> · ${pct}% pagado`+
     (proxCuota?` · Próxima cuota: <strong>${proxCuota.fecha}</strong> — ${fmt(proxCuota.importe)}`:'');
-  // Prerellenar importe si hay próxima cuota y acción es pago
+  // Prerellenar importe
   const accion=document.getElementById('f-deuda-accion').value;
-  if(accion==='pago'&&proxCuota){
-    document.getElementById('f-importe').value=proxCuota.importe.toFixed(2);
-  } else if(accion==='cancelacion'){
-    document.getElementById('f-importe').value=restante.toFixed(2);
-  }
-}
-
-function onDeudaAccionChange(){
-  const accion=document.getElementById('f-deuda-accion').value;
-  document.getElementById('deu-amort-opts').style.display=accion==='amortizacion'?'block':'none';
-  onDeudaSelChange(); // re-fill importe
+  if(accion==='pago'&&proxCuota) document.getElementById('f-importe').value=proxCuota.importe.toFixed(2);
+  else if(accion==='cancelacion') document.getElementById('f-importe').value=restante.toFixed(2);
 }
 
 /* ---- RECORDS ---- */
@@ -983,36 +1012,62 @@ function addRecord(){
   if(!fecha||isNaN(imp)||imp<=0){alert('Fecha e importe son obligatorios');return;}
 
   if(tipo==='deuda'){
-    const debtId=parseInt(document.getElementById('f-deuda-sel').value)||null;
     const accion=document.getElementById('f-deuda-accion').value;
     const wid=parseInt(document.getElementById('f-deuda-wallet').value)||null;
+    const wnom=window.wallets.find(w=>w.id===wid)?.nombre||'—';
+
+    if(accion==='nueva'){
+      // Crear deuda nueva + apunte ingreso
+      const nombre=document.getElementById('f-deuda-nombre').value.trim();
+      const dir=document.getElementById('f-deuda-dir').value;
+      const contraparteId=parseInt(document.getElementById('f-deuda-contraparte').value)||null;
+      const contraparteNombre=window.contacts.find(c=>c.id===contraparteId)?.nombre||'—';
+      if(!nombre){alert('Introduce un nombre para la deuda');return;}
+
+      // Crear deuda en el sistema (sin plazo, configurable luego)
+      const newDebt={
+        id:Date.now(), nombre, dir, contraparteId, contraparteNombre,
+        cat:'—', total:imp, plazo:'sinplazo', desc:desc||'',
+        cuotas:[], pagado:0, fecha
+      };
+      window.debts.push(newDebt);
+
+      // Apunte: ingreso si me prestan, gasto si presto yo
+      const recTipo=dir==='debo'?'ingreso':'gasto';
+      const origenLabel=dir==='debo'?contraparteNombre:wnom;
+      const destinoLabel=dir==='debo'?wnom:contraparteNombre;
+      const rec={
+        id:Date.now()+1, tipo:recTipo, fecha, importe:imp,
+        descripcion:desc||`Nueva deuda — ${nombre}`,
+        categoria:'Deuda', subcategoria:'Nueva deuda recibida',
+        cuentaId:wid, cuentaNombre:wnom,
+        origenLabel, destinoLabel,
+        deudaId:newDebt.id, deudaNombre:nombre, deudaAccion:'nueva'
+      };
+      window.records.push(rec);
+      save();
+      document.getElementById('f-deuda-nombre').value='';
+      document.getElementById('f-importe').value='';
+      document.getElementById('f-desc').value='';
+      renderDebts(); updateDebtBadge(); renderEstadoGlobal(); render();
+      showView('deudas');
+      return;
+    }
+
+    // Acciones sobre deuda existente
+    const debtId=parseInt(document.getElementById('f-deuda-sel').value)||null;
     if(!debtId){alert('Selecciona una deuda');return;}
     const d=window.debts.find(x=>x.id===debtId);
     if(!d){alert('Deuda no encontrada');return;}
-    const wnom=window.wallets.find(w=>w.id===wid)?.nombre||'—';
     const restante=Math.max(0,d.total-d.pagado);
 
-    // Etiquetas del apunte según acción
-    const accionLabels={nueva:'Nueva deuda recibida',pago:'Pago cuota',amortizacion:'Amortización parcial',cancelacion:'Cancelación anticipada'};
+    const accionLabels={pago:'Pago cuota',amortizacion:'Amortización parcial',cancelacion:'Cancelación anticipada'};
     const accionLabel=accionLabels[accion]||accion;
-
-    // Origen/destino según dirección de la deuda y acción
-    let origenLabel, destinoLabel, recTipo;
-    if(accion==='nueva'){
-      // Nueva deuda recibida: el acreedor/deudor → tu cuenta
-      origenLabel=d.contraparteNombre;
-      destinoLabel=wnom;
-      recTipo='ingreso'; // entra dinero en tu cuenta
-    } else {
-      // Pago, amortización, cancelación: tu cuenta → acreedor
-      origenLabel=wnom;
-      destinoLabel=d.contraparteNombre;
-      recTipo='gasto'; // sale dinero de tu cuenta
-    }
-
-    // Crear apunte en registros
+    // Pagos salen de tu cuenta → van al acreedor/deudor
+    const origenLabel=wnom;
+    const destinoLabel=d.contraparteNombre;
     const rec={
-      id:Date.now(), tipo:recTipo, fecha, importe:imp,
+      id:Date.now(), tipo:'gasto', fecha, importe:imp,
       descripcion:desc||`${accionLabel} — ${d.nombre}`,
       categoria:'Deuda', subcategoria:accionLabel,
       cuentaId:wid, cuentaNombre:wnom,
@@ -1021,24 +1076,16 @@ function addRecord(){
     };
     window.records.push(rec);
 
-    // Aplicar acción sobre la deuda
-    if(accion==='nueva'){
-      // No modifica pagado ni cuotas — la deuda ya existe, solo registra el recibo
-    } else if(accion==='pago'){
-      // Marcar la primera cuota pendiente como pagada (o registrar pago libre)
+    if(accion==='pago'){
       const proxCuota=d.cuotas.find(c=>!c.pagada&&c.tipo==='cuota');
-      if(proxCuota&&Math.abs(proxCuota.importe-imp)<0.01){
-        proxCuota.pagada=true;
-      } else {
-        d.cuotas.push({id:Date.now()+1,fecha,importe:imp,desc:desc||'Pago',pagada:true,tipo:'libre'});
-      }
+      if(proxCuota&&Math.abs(proxCuota.importe-imp)<0.01) proxCuota.pagada=true;
+      else d.cuotas.push({id:Date.now()+1,fecha,importe:imp,desc:desc||'Pago',pagada:true,tipo:'libre'});
       d.pagado=Math.round((d.pagado+imp)*100)/100;
     } else if(accion==='amortizacion'){
       const modalidad=(document.getElementById('f-deuda-amort-mod')||{value:'importe'}).value;
       if(imp>restante+0.01){alert(`El importe supera el capital pendiente (${fmt(restante)})`);return;}
       d.cuotas.push({id:Date.now()+1,fecha,importe:imp,desc:`Amortización parcial (reduce ${modalidad==='importe'?'cuota':'plazo'})`,pagada:true,tipo:'amortizacion'});
       d.pagado=Math.round((d.pagado+imp)*100)/100;
-      // Recalcular cuotas
       if(d.plazo==='conplazo'){
         const nuevoCapital=Math.max(0,d.total-d.pagado);
         const pendientes=d.cuotas.filter(c=>!c.pagada&&c.tipo==='cuota');
@@ -1052,7 +1099,7 @@ function addRecord(){
             const nNec=Math.ceil(nuevoCapital/impCuota);
             pendientes.slice(nNec).forEach(c=>{const idx=d.cuotas.indexOf(c);if(idx>-1)d.cuotas.splice(idx,1);});
             const nuevas=d.cuotas.filter(c=>!c.pagada&&c.tipo==='cuota');
-            if(nuevas.length>0){const u=nuevas[nuevas.length-1];u.importe=Math.round((nuevoCapital-impCuota*(nuevas.length-1))*100)/100;u.desc=u.desc.split('(')[0].trim()+' (↓ plazo)';}
+            if(nuevas.length>0){const u=nuevas[nuevas.length-1];u.importe=Math.round((nuevoCapital-impCuota*(nuevas.length-1))*100)/100;}
           }
         }
       }
@@ -1309,6 +1356,8 @@ function amortizarParcial(debtId){
   }
 
   save(); renderDebts(); updateDebtBadge(); render(); renderEstadoGlobal();
+  _pushDebtRecord(d,'amortizacion',fecha,imp,`Amortización parcial — ${d.nombre}`);
+  save(); renderTable();
 }
 
 /* ---- CANCELACIÓN ANTICIPADA ---- */
@@ -1324,7 +1373,23 @@ function cancelarDeuda(debtId){
   d.cuotas.filter(c=>!c.pagada).forEach(c=>c.pagada=true);
   d.cuotas.push({id:Date.now(),fecha:fechaCancel,importe:impCancel,desc:'Cancelación anticipada',pagada:true,tipo:'cancelacion'});
   d.pagado=d.total;
-  save(); renderDebts(); updateDebtBadge(); render(); renderEstadoGlobal();
+  _pushDebtRecord(d,'cancelacion',fechaCancel,impCancel,`Cancelación anticipada — ${d.nombre}`);
+  save(); renderDebts(); updateDebtBadge(); render(); renderEstadoGlobal(); renderTable();
+}
+
+/* ---- HELPER: genera apunte en registros desde acción de deuda ---- */
+function _pushDebtRecord(d, accion, fecha, imp, desc){
+  const accionLabels={pago:'Pago cuota',amortizacion:'Amortización parcial',cancelacion:'Cancelación anticipada'};
+  // Pagos salen de tu lado (gasto si debes, ingreso si te devuelven)
+  const tipo=d.dir==='debo'?'gasto':'ingreso';
+  const origenLabel=d.dir==='debo'?'—':d.contraparteNombre;
+  const destinoLabel=d.dir==='debo'?d.contraparteNombre:'—';
+  window.records.push({
+    id:Date.now()+Math.random(), tipo, fecha, importe:imp,
+    descripcion:desc, categoria:'Deuda', subcategoria:accionLabels[accion]||accion,
+    cuentaId:null, cuentaNombre:'—', origenLabel, destinoLabel,
+    deudaId:d.id, deudaNombre:d.nombre, deudaAccion:accion
+  });
 }
 
 function addCuotaLibre(debtId){
@@ -1335,14 +1400,18 @@ function addCuotaLibre(debtId){
   const d=window.debts.find(x=>x.id===debtId); if(!d)return;
   d.cuotas.push({id:Date.now(),fecha,importe:imp,desc:desc||'Pago',pagada:true,tipo:'libre'});
   d.pagado=Math.round((d.pagado+imp)*100)/100;
-  save(); renderDebts(); updateDebtBadge(); render(); renderEstadoGlobal();
+  _pushDebtRecord(d,'pago',fecha,imp,desc||`Pago — ${d.nombre}`);
+  save(); renderDebts(); updateDebtBadge(); renderEstadoGlobal(); render();
 }
 
 function toggleCuota(debtId,cuotaId){
   const d=window.debts.find(x=>x.id===debtId); if(!d)return;
   const c=d.cuotas.find(x=>x.id===cuotaId); if(!c)return;
+  const wasPagada=c.pagada;
   c.pagada=!c.pagada;
   d.pagado=d.cuotas.filter(x=>x.pagada).reduce((s,x)=>s+x.importe,0);
+  // Apunte solo al marcar como pagada, no al desmarcar
+  if(!wasPagada) _pushDebtRecord(d,'pago',c.fecha,c.importe,`${c.desc} — ${d.nombre}`);
   save(); renderDebts(); updateDebtBadge(); render(); renderEstadoGlobal();
 }
 
