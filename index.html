@@ -1446,7 +1446,8 @@ function amortizarParcial(debtId){
   const d=window.debts.find(x=>x.id===debtId); if(!d)return;
   const imp=parseFloat(document.getElementById(`am-imp-${debtId}`).value);
   const fecha=document.getElementById(`am-fecha-${debtId}`).value;
-  const modalidad=document.getElementById(`am-modalidad-${debtId}`).value; // 'importe' | 'plazo'
+  const modalidad=document.getElementById(`am-modalidad-${debtId}`).value;
+  const wid=parseInt(document.getElementById(`am-wallet-${debtId}`)?.value)||null;
   if(!fecha||isNaN(imp)||imp<=0){alert('Fecha e importe requeridos');return;}
   const restante=Math.max(0,d.total-d.pagado);
   if(imp>restante+0.01){alert(`El importe supera el capital pendiente (${fmt(restante)})`);return;}
@@ -1461,7 +1462,6 @@ function amortizarParcial(debtId){
       cuotasPendientes.forEach(c=>{c.pagada=true;c.importe=0;});
     } else if(cuotasPendientes.length>0){
       if(modalidad==='importe'){
-        // Mismas cuotas, menor importe por cuota
         const impNuevo=Math.round((nuevoCapital/cuotasPendientes.length)*100)/100;
         cuotasPendientes.forEach((c,i)=>{
           const esUltima=i===cuotasPendientes.length-1;
@@ -1469,16 +1469,10 @@ function amortizarParcial(debtId){
           c.desc=c.desc.split('(')[0].trim()+' (↓ cuota)';
         });
       } else {
-        // Mismo importe por cuota, eliminar cuotas sobrantes del final
         const impCuota=cuotasPendientes[0].importe;
         const nNecesarias=Math.ceil(nuevoCapital/impCuota);
-        // Eliminar las cuotas que sobran (las últimas)
         const sobrantes=cuotasPendientes.slice(nNecesarias);
-        sobrantes.forEach(c=>{
-          const idx=d.cuotas.indexOf(c);
-          if(idx>-1) d.cuotas.splice(idx,1);
-        });
-        // Ajustar última cuota restante
+        sobrantes.forEach(c=>{const idx=d.cuotas.indexOf(c);if(idx>-1)d.cuotas.splice(idx,1);});
         const nuevasPendientes=d.cuotas.filter(c=>!c.pagada&&c.tipo==='cuota');
         if(nuevasPendientes.length>0){
           const ultima=nuevasPendientes[nuevasPendientes.length-1];
@@ -1489,9 +1483,8 @@ function amortizarParcial(debtId){
     }
   }
 
-  save(); renderDebts(); updateDebtBadge(); render(); renderEstadoGlobal();
-  _pushDebtRecord(d,'amortizacion',fecha,imp,`Amortización parcial — ${d.nombre}`);
-  save(); renderTable();
+  _pushDebtRecord(d,'amortizacion',fecha,imp,`Amortización parcial — ${d.nombre}`,wid);
+  save(); renderDebts(); updateDebtBadge(); render(); renderEstadoGlobal(); renderTable();
 }
 
 /* ---- CANCELACIÓN ANTICIPADA ---- */
@@ -1500,6 +1493,7 @@ function cancelarDeuda(debtId){
   const restante=Math.max(0,d.total-d.pagado);
   const impEl=document.getElementById(`cancel-imp-${debtId}`);
   const fechaEl=document.getElementById(`cancel-fecha-${debtId}`);
+  const wid=parseInt(document.getElementById(`cancel-wallet-${debtId}`)?.value)||null;
   const impCancel=impEl?parseFloat(impEl.value)||restante:restante;
   const fechaCancel=fechaEl?.value||new Date().toISOString().slice(0,10);
   if(isNaN(impCancel)||impCancel<=0){alert('Introduce el importe de cancelación');return;}
@@ -1507,21 +1501,21 @@ function cancelarDeuda(debtId){
   d.cuotas.filter(c=>!c.pagada).forEach(c=>c.pagada=true);
   d.cuotas.push({id:Date.now(),fecha:fechaCancel,importe:impCancel,desc:'Cancelación anticipada',pagada:true,tipo:'cancelacion'});
   d.pagado=d.total;
-  _pushDebtRecord(d,'cancelacion',fechaCancel,impCancel,`Cancelación anticipada — ${d.nombre}`);
+  _pushDebtRecord(d,'cancelacion',fechaCancel,impCancel,`Cancelación anticipada — ${d.nombre}`,wid);
   save(); renderDebts(); updateDebtBadge(); render(); renderEstadoGlobal(); renderTable();
 }
 
 /* ---- HELPER: genera apunte en registros desde acción de deuda ---- */
-function _pushDebtRecord(d, accion, fecha, imp, desc){
+function _pushDebtRecord(d, accion, fecha, imp, desc, wid){
   const accionLabels={pago:'Pago cuota',amortizacion:'Amortización parcial',cancelacion:'Cancelación anticipada'};
-  // Pagos salen de tu lado (gasto si debes, ingreso si te devuelven)
   const tipo=d.dir==='debo'?'gasto':'ingreso';
-  const origenLabel=d.dir==='debo'?'—':d.contraparteNombre;
-  const destinoLabel=d.dir==='debo'?d.contraparteNombre:'—';
+  const wnom=wid?window.wallets.find(w=>w.id===wid)?.nombre||'—':'—';
+  const origenLabel=d.dir==='debo'?wnom:d.contraparteNombre;
+  const destinoLabel=d.dir==='debo'?d.contraparteNombre:wnom;
   window.records.push({
     id:Date.now()+Math.random(), tipo, fecha, importe:imp,
     descripcion:desc, categoria:'Deuda', subcategoria:accionLabels[accion]||accion,
-    cuentaId:null, cuentaNombre:'—', origenLabel, destinoLabel,
+    cuentaId:wid||null, cuentaNombre:wnom, origenLabel, destinoLabel,
     deudaId:d.id, deudaNombre:d.nombre, deudaAccion:accion
   });
 }
@@ -1530,11 +1524,12 @@ function addCuotaLibre(debtId){
   const fecha=document.getElementById(`cl-fecha-${debtId}`).value;
   const imp=parseFloat(document.getElementById(`cl-imp-${debtId}`).value);
   const desc=document.getElementById(`cl-desc-${debtId}`).value.trim();
+  const wid=parseInt(document.getElementById(`cl-wallet-${debtId}`)?.value)||null;
   if(!fecha||isNaN(imp)||imp<=0){alert('Fecha e importe requeridos');return;}
   const d=window.debts.find(x=>x.id===debtId); if(!d)return;
   d.cuotas.push({id:Date.now(),fecha,importe:imp,desc:desc||'Pago',pagada:true,tipo:'libre'});
   d.pagado=Math.round((d.pagado+imp)*100)/100;
-  _pushDebtRecord(d,'pago',fecha,imp,desc||`Pago — ${d.nombre}`);
+  _pushDebtRecord(d,'pago',fecha,imp,desc||`Pago — ${d.nombre}`,wid);
   save(); renderDebts(); updateDebtBadge(); renderEstadoGlobal(); render();
 }
 
@@ -1545,7 +1540,7 @@ function toggleCuota(debtId,cuotaId){
   c.pagada=!c.pagada;
   d.pagado=d.cuotas.filter(x=>x.pagada).reduce((s,x)=>s+x.importe,0);
   // Apunte solo al marcar como pagada, no al desmarcar
-  if(!wasPagada) _pushDebtRecord(d,'pago',c.fecha,c.importe,`${c.desc} — ${d.nombre}`);
+  if(!wasPagada) _pushDebtRecord(d,'pago',c.fecha,c.importe,`${c.desc} — ${d.nombre}`,null);
   save(); renderDebts(); updateDebtBadge(); render(); renderEstadoGlobal();
 }
 
@@ -1785,18 +1780,26 @@ function renderDebts(){
           <div>
             <div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px">Registrar pago</div>
             <div class="add-cuota-row">
-              <input type="date" id="cl-fecha-${d.id}" style="flex:0 0 118px" value="${today}"/>
+              <input type="date" id="cl-fecha-${d.id}" style="flex:0 0 110px" value="${today}"/>
               <input type="number" id="cl-imp-${d.id}" placeholder="Importe €" step="0.01" style="flex:1"/>
-              <input type="text" id="cl-desc-${d.id}" placeholder="Descripción" style="flex:1.2"/>
+              <select id="cl-wallet-${d.id}" style="flex:0 0 130px;font-size:12px;padding:5px 8px">
+                <option value="">Cuenta (opcional)</option>
+                ${window.wallets.map(w=>`<option value="${w.id}">${w.nombre}</option>`).join('')}
+              </select>
+              <input type="text" id="cl-desc-${d.id}" placeholder="Descripción" style="flex:1"/>
               <button class="btn btn-sm btn-success" onclick="addCuotaLibre(${d.id})">✓ Pagar</button>
             </div>
           </div>
           <div>
             <div style="font-size:10px;color:var(--amber);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px">Amortización parcial</div>
             <div class="add-cuota-row" style="margin-bottom:5px">
-              <input type="date" id="am-fecha-${d.id}" style="flex:0 0 118px" value="${today}"/>
+              <input type="date" id="am-fecha-${d.id}" style="flex:0 0 110px" value="${today}"/>
               <input type="number" id="am-imp-${d.id}" placeholder="Capital €" step="0.01" style="flex:1"/>
-              <select id="am-modalidad-${d.id}" style="flex:0 0 120px;font-size:12px;padding:5px 8px">
+              <select id="am-wallet-${d.id}" style="flex:0 0 130px;font-size:12px;padding:5px 8px">
+                <option value="">Cuenta (opcional)</option>
+                ${window.wallets.map(w=>`<option value="${w.id}">${w.nombre}</option>`).join('')}
+              </select>
+              <select id="am-modalidad-${d.id}" style="flex:0 0 110px;font-size:12px;padding:5px 8px">
                 <option value="importe">Reducir cuota</option>
                 <option value="plazo">Reducir plazo</option>
               </select>
@@ -1804,8 +1807,12 @@ function renderDebts(){
             </div>
             <div style="font-size:10px;color:var(--red);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px;margin-top:10px">Cancelación anticipada</div>
             <div class="add-cuota-row">
-              <input type="date" id="cancel-fecha-${d.id}" style="flex:0 0 118px" value="${today}"/>
+              <input type="date" id="cancel-fecha-${d.id}" style="flex:0 0 110px" value="${today}"/>
               <input type="number" id="cancel-imp-${d.id}" placeholder="Importe" step="0.01" value="${restante.toFixed(2)}" style="flex:1"/>
+              <select id="cancel-wallet-${d.id}" style="flex:0 0 130px;font-size:12px;padding:5px 8px">
+                <option value="">Cuenta (opcional)</option>
+                ${window.wallets.map(w=>`<option value="${w.id}">${w.nombre}</option>`).join('')}
+              </select>
               <button class="btn btn-sm btn-danger" onclick="cancelarDeuda(${d.id})">Cancelar deuda</button>
             </div>
           </div>
