@@ -1338,7 +1338,10 @@ function renderTable(){
       <td style="color:var(--muted)">${r.subcategoria||'—'}</td>
       <td style="color:var(--muted)">${r.descripcion||'—'}</td>
       <td class="amt ${ac}">${as}${fmt(r.importe)}</td>
-      <td><button class="del-btn" onclick="deleteRecord(${r.id})">✕</button></td>
+      <td style="display:flex;gap:3px">
+        <button class="del-btn" onclick="openEditModal(${r.id})" title="Editar" style="color:var(--accent)">✏</button>
+        <button class="del-btn" onclick="deleteRecord(${r.id})" title="Eliminar">✕</button>
+      </td>
     </tr>`;
   }).join('');
   const ing=data.filter(r=>r.tipo==='ingreso').reduce((s,r)=>s+r.importe,0);
@@ -2063,6 +2066,80 @@ function exportCSV(){
   const csv=[h,...rows].map(r=>r.join(',')).join('\n');
   const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);a.download='finanzas_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
 }
+</script>
+<!-- EDIT MODAL -->
+<div id="edit-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);backdrop-filter:blur(3px);align-items:center;justify-content:center">
+  <div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--rl);padding:24px;width:560px;max-width:95vw;max-height:90vh;overflow-y:auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+      <div style="font-size:16px;font-weight:600">Editar registro</div>
+      <button onclick="closeEditModal()" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:18px;padding:2px 6px;border-radius:5px">✕</button>
+    </div>
+    <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-bottom:12px">
+      <div class="field"><label>Fecha</label><input type="date" id="e-fecha"/></div>
+      <div class="field"><label>Importe (€)</label><input type="number" id="e-importe" step="0.01" min="0"/></div>
+    </div>
+    <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-bottom:12px">
+      <div class="field"><label>Categoría</label><input type="text" id="e-categoria" placeholder="Categoría"/></div>
+      <div class="field"><label>Subcategoría</label><input type="text" id="e-subcategoria" placeholder="Subcategoría"/></div>
+    </div>
+    <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-bottom:12px">
+      <div class="field"><label>Origen</label><input type="text" id="e-origen" placeholder="Origen"/></div>
+      <div class="field"><label>Destino</label><input type="text" id="e-destino" placeholder="Destino"/></div>
+    </div>
+    <div class="field" style="margin-bottom:18px"><label>Descripción</label><input type="text" id="e-desc" placeholder="Descripción / aclaración"/></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <button class="btn btn-ghost" onclick="closeEditModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveEdit()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let _editingId=null;
+
+function openEditModal(id){
+  const r=window.records.find(x=>x.id===id); if(!r)return;
+  _editingId=id;
+  document.getElementById('e-fecha').value=r.fecha||'';
+  document.getElementById('e-importe').value=r.importe||'';
+  document.getElementById('e-categoria').value=r.categoria||'';
+  document.getElementById('e-subcategoria').value=r.subcategoria||'';
+  document.getElementById('e-origen').value=r.origenLabel||'';
+  document.getElementById('e-destino').value=r.destinoLabel||'';
+  document.getElementById('e-desc').value=r.descripcion||'';
+  const modal=document.getElementById('edit-modal');
+  modal.style.display='flex';
+  document.addEventListener('keydown',_escEdit);
+}
+
+function closeEditModal(){
+  document.getElementById('edit-modal').style.display='none';
+  document.removeEventListener('keydown',_escEdit);
+  _editingId=null;
+}
+
+function _escEdit(e){ if(e.key==='Escape') closeEditModal(); }
+
+function saveEdit(){
+  if(!_editingId)return;
+  const r=window.records.find(x=>x.id===_editingId); if(!r)return;
+  const fecha=document.getElementById('e-fecha').value;
+  const imp=parseFloat(document.getElementById('e-importe').value);
+  if(!fecha||isNaN(imp)||imp<=0){alert('Fecha e importe son obligatorios');return;}
+  r.fecha=fecha;
+  r.importe=imp;
+  r.categoria=document.getElementById('e-categoria').value.trim()||r.categoria;
+  r.subcategoria=document.getElementById('e-subcategoria').value.trim()||r.subcategoria;
+  r.origenLabel=document.getElementById('e-origen').value.trim()||r.origenLabel;
+  r.destinoLabel=document.getElementById('e-destino').value.trim()||r.destinoLabel;
+  r.descripcion=document.getElementById('e-desc').value.trim();
+  save(); closeEditModal(); renderTable(); render();
+}
+
+// Close on backdrop click
+document.getElementById('edit-modal').addEventListener('click',function(e){
+  if(e.target===this) closeEditModal();
+});
 </script>
 </body>
 </html>
