@@ -788,6 +788,11 @@ tbody tr:hover td{background:rgba(255,255,255,.02)}
 .ap-cat-select{display:flex;align-items:center;gap:8px;background:var(--surface2);padding:5px 10px;border-radius:8px}
 .ap-cat-select label{font-size:11px;color:var(--muted)}
 .ap-cat-select select{background:var(--surface);border:1px solid var(--border);font-size:12px;padding:5px 8px;width:auto}
+.ap-chip{padding:7px 14px;border-radius:20px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);font-family:var(--font);font-size:13px;cursor:pointer;transition:all .15s;font-weight:500}
+.ap-chip:hover{border-color:var(--accent);color:var(--text)}
+.ap-chip.active{background:var(--accent-dim);color:var(--accent);border-color:var(--accent)}
+.ap-chip.active.ing-mode{background:var(--green-dim);color:var(--green);border-color:rgba(34,197,94,.4)}
+.ap-chip.active.gas-mode{background:var(--red-dim);color:var(--red);border-color:rgba(239,68,68,.4)}
 </style>
 
 <div id="view-apuestas" style="display:none">
@@ -805,6 +810,33 @@ tbody tr:hover td{background:rgba(255,255,255,.02)}
     <div class="ap-cat-select">
       <label>Subcategoría</label>
       <select id="ap-sub" onchange="renderApuestas()"><option value="">Todas</option></select>
+    </div>
+  </div>
+
+  <!-- QUICK ENTRY (solo si categoria seleccionada = Apuestas o similar) -->
+  <div id="ap-quick-entry" class="card" style="margin-bottom:18px;display:none">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:13px;font-weight:500;display:flex;align-items:center;gap:8px">⚡ Registro rápido <span style="font-size:11px;color:var(--muted2);font-weight:400">selecciona y registra en un clic</span></div>
+      <div class="type-toggle" style="margin:0">
+        <button class="type-btn ing active" id="ap-tb-ing" onclick="apSetType('ingreso')">↑ Ingreso (ganancia)</button>
+        <button class="type-btn gas" id="ap-tb-gas" onclick="apSetType('gasto')">↓ Gasto (apuesta)</button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr;gap:10px">
+      <div>
+        <div style="font-size:11px;color:var(--muted);font-weight:500;margin-bottom:6px">Casa de apuestas</div>
+        <div id="ap-quick-subs" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--muted);font-weight:500;margin-bottom:6px">Cuenta</div>
+        <div id="ap-quick-wallets" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:140px 130px 1fr auto;gap:8px;align-items:end;margin-top:4px">
+        <div class="field"><label>Fecha</label><input type="date" id="ap-quick-fecha"/></div>
+        <div class="field"><label>Importe (€)</label><input type="number" id="ap-quick-imp" placeholder="0,00" step="0.01" min="0"/></div>
+        <div class="field"><label>Descripción</label><input type="text" id="ap-quick-desc" placeholder="Opcional (ej: partido X)"/></div>
+        <button class="btn btn-primary" onclick="apQuickAdd()">Añadir</button>
+      </div>
     </div>
   </div>
 
@@ -2592,6 +2624,9 @@ function renderAnCharts(catMap,vista,records){
 
 /* ---- APUESTAS — CALENDARIO ---- */
 let apCurrentDate=new Date();
+let apQuickType='ingreso';
+let apQuickSub=null;
+let apQuickWallet=null;
 
 function initApuestas(){
   // Cat selector — auto-select "Apuestas" if exists, otherwise first
@@ -2619,6 +2654,101 @@ function buildApSubs(){
   sub.innerHTML='<option value="">Todas</option>';
   if(cat&&window.cats[cat]) window.cats[cat].forEach(s=>sub.add(new Option(s,s)));
   if(prev) sub.value=prev;
+  renderApQuickEntry();
+}
+
+function renderApQuickEntry(){
+  const cat=document.getElementById('ap-cat').value;
+  const panel=document.getElementById('ap-quick-entry');
+  if(!panel) return;
+  // Solo mostrar si la categoría seleccionada se llama apuestas o contiene "apuesta"
+  const isApuestas=cat&&cat.toLowerCase().includes('apuesta');
+  panel.style.display=isApuestas?'block':'none';
+  if(!isApuestas) return;
+
+  // Fecha por defecto = hoy
+  const fechaInput=document.getElementById('ap-quick-fecha');
+  if(fechaInput&&!fechaInput.value) fechaInput.value=new Date().toISOString().slice(0,10);
+
+  // Subcategorías como chips
+  const subs=window.cats[cat]||[];
+  const subsEl=document.getElementById('ap-quick-subs');
+  if(subsEl){
+    if(!subs.length) subsEl.innerHTML='<span style="font-size:11px;color:var(--muted2);font-style:italic">Define subcategorías en Directorio → Categorías</span>';
+    else subsEl.innerHTML=subs.map(s=>{
+      const active=apQuickSub===s;
+      const modeCls=active?(apQuickType==='ingreso'?'ing-mode':'gas-mode'):'';
+      return `<button class="ap-chip ${active?'active '+modeCls:''}" onclick="apSetSub('${esc(s)}')">${s}</button>`;
+    }).join('');
+  }
+
+  // Cuentas como chips
+  const walEl=document.getElementById('ap-quick-wallets');
+  if(walEl){
+    if(!window.wallets.length) walEl.innerHTML='<span style="font-size:11px;color:var(--muted2);font-style:italic">Crea cuentas en Directorio → Cuentas</span>';
+    else walEl.innerHTML=window.wallets.map(w=>{
+      const active=apQuickWallet===w.id;
+      const modeCls=active?(apQuickType==='ingreso'?'ing-mode':'gas-mode'):'';
+      return `<button class="ap-chip ${active?'active '+modeCls:''}" onclick="apSetWallet(${w.id})">${w.nombre}</button>`;
+    }).join('');
+  }
+}
+
+function apSetType(t){
+  apQuickType=t;
+  document.getElementById('ap-tb-ing').classList.toggle('active',t==='ingreso');
+  document.getElementById('ap-tb-gas').classList.toggle('active',t==='gasto');
+  renderApQuickEntry();
+}
+
+function apSetSub(s){
+  apQuickSub=apQuickSub===s?null:s;
+  renderApQuickEntry();
+}
+
+function apSetWallet(id){
+  apQuickWallet=apQuickWallet===id?null:id;
+  renderApQuickEntry();
+}
+
+function apQuickAdd(){
+  const cat=document.getElementById('ap-cat').value;
+  const fecha=document.getElementById('ap-quick-fecha').value;
+  const imp=parseFloat(document.getElementById('ap-quick-imp').value);
+  const desc=document.getElementById('ap-quick-desc').value.trim();
+  if(!cat){alert('Selecciona una categoría arriba');return;}
+  if(!fecha){alert('Introduce una fecha');return;}
+  if(isNaN(imp)||imp<=0){alert('Introduce un importe válido');return;}
+  if(!apQuickSub){alert('Selecciona una casa de apuestas (subcategoría)');return;}
+  if(!apQuickWallet){alert('Selecciona una cuenta');return;}
+
+  const wallet=window.wallets.find(w=>w.id===apQuickWallet);
+  const wnom=wallet?.nombre||'—';
+  const tipo=apQuickType;
+  const subcatLabel=apQuickSub;
+
+  let origenLabel, destinoLabel;
+  if(tipo==='ingreso'){
+    origenLabel=cat+' / '+subcatLabel;
+    destinoLabel=wnom;
+  } else {
+    origenLabel=wnom;
+    destinoLabel=cat+' / '+subcatLabel;
+  }
+
+  window.records.push({
+    id:Date.now(), tipo, fecha, importe:imp,
+    descripcion:desc, categoria:cat, subcategoria:subcatLabel,
+    cuentaId:apQuickWallet, cuentaNombre:wnom,
+    origenLabel, destinoLabel
+  });
+  save();
+  // Reset solo importe y descripción, mantener sub y wallet
+  document.getElementById('ap-quick-imp').value='';
+  document.getElementById('ap-quick-desc').value='';
+  renderApuestas();
+  render();
+  renderTable();
 }
 
 document.addEventListener('change',function(e){
@@ -2650,6 +2780,7 @@ function renderApuestas(){
   const y=apCurrentDate.getFullYear();
   const m=apCurrentDate.getMonth();
   document.getElementById('ap-period-label').textContent=`${MNAMES[m]} ${y}`;
+  renderApQuickEntry();
 
   const allRecs=getApRecords();
 
