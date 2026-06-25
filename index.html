@@ -389,7 +389,7 @@ tbody tr:hover td{background:rgba(255,255,255,.02)}
         <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:8px">
           <div class="field"><label>Nombre de la deuda</label><input type="text" id="f-deuda-nombre" placeholder="Ej: Préstamo coche…"/></div>
           <div class="field"><label>Dirección</label>
-            <select id="f-deuda-dir">
+            <select id="f-deuda-dir" onchange="onDeudaDirChange()">
               <option value="debo">Yo debo (me lo han prestado)</option>
               <option value="medeben">Me deben (lo he prestado yo)</option>
             </select>
@@ -398,7 +398,18 @@ tbody tr:hover td{background:rgba(255,255,255,.02)}
             <select id="f-deuda-contraparte"><option value="">Selecciona…</option></select>
           </div>
         </div>
-        <div class="info-box" style="font-size:11px">ℹ El plazo y cuotas los configuras luego desde la pestaña <strong style="cursor:pointer;text-decoration:underline" onclick="showView('deudas')">Deudas</strong>.</div>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-bottom:8px">
+          <div class="field">
+            <label id="lbl-recibido">💰 Dinero recibido (entra en tu cuenta)</label>
+            <input type="number" id="f-deuda-recibido" placeholder="0,00" step="0.01" min="0" oninput="onDeudaCostes()"/>
+          </div>
+          <div class="field">
+            <label id="lbl-total">💸 Coste total a devolver (deuda total)</label>
+            <input type="number" id="f-deuda-coste" placeholder="0,00" step="0.01" min="0" oninput="onDeudaCostes()"/>
+          </div>
+        </div>
+        <div id="deu-costes-info" style="display:none;background:var(--surface2);border-radius:8px;padding:9px 12px;font-size:12px;color:var(--muted);margin-bottom:8px"></div>
+        <div class="info-box" style="font-size:11px">ℹ El plazo y cuotas los configuras luego desde la pestaña <strong style="cursor:pointer;text-decoration:underline" onclick="showView('deudas')">Deudas</strong>. Si recibido = coste, no hay intereses.</div>
       </div>
 
       <!-- DEUDA EXISTENTE: selector + info -->
@@ -1072,9 +1083,12 @@ function setType(t){
   document.getElementById('flow-trf').style.display=t==='transferencia'?'block':'none';
   document.getElementById('flow-deu').style.display=t==='deuda'?'block':'none';
   document.getElementById('flow-con').style.display=t==='conciliacion'?'block':'none';
-  // Ocultar importe en conciliacion (se calcula solo)
+  // Ocultar importe en conciliacion (se calcula solo) o en deuda nueva
   const impField=document.getElementById('f-importe-field');
-  if(impField) impField.style.display=t==='conciliacion'?'none':'flex';
+  if(impField){
+    const isDeuNueva=t==='deuda'&&document.getElementById('f-deuda-accion')&&document.getElementById('f-deuda-accion').value==='nueva';
+    impField.style.display=t==='conciliacion'||isDeuNueva?'none':'flex';
+  }
   const addBtn=document.getElementById('btn-add-record');
   if(addBtn) addBtn.textContent=t==='conciliacion'?'Registrar ajuste de balance':'Añadir registro';
   if(t==='deuda') buildDeudaFormSelects();
@@ -1105,7 +1119,51 @@ function onDeudaAccionChange(){
   document.getElementById('deu-nueva-fields').style.display=isNueva?'block':'none';
   document.getElementById('deu-existente-fields').style.display=isNueva?'none':'block';
   document.getElementById('deu-amort-opts').style.display=accion==='amortizacion'?'block':'none';
+  // Toggle importe field
+  const impField=document.getElementById('f-importe-field');
+  if(impField) impField.style.display=isNueva?'none':'flex';
   if(!isNueva) onDeudaSelChange();
+}
+
+function onDeudaDirChange(){
+  const dir=document.getElementById('f-deuda-dir').value;
+  const lblR=document.getElementById('lbl-recibido');
+  const lblT=document.getElementById('lbl-total');
+  if(dir==='debo'){
+    if(lblR) lblR.textContent='💰 Dinero recibido (entra en tu cuenta)';
+    if(lblT) lblT.textContent='💸 Coste total a devolver (deuda total)';
+  } else {
+    if(lblR) lblR.textContent='💸 Dinero entregado (sale de tu cuenta)';
+    if(lblT) lblT.textContent='💰 Importe total a recibir';
+  }
+  onDeudaCostes();
+}
+
+function onDeudaCostes(){
+  const recibido=parseFloat(document.getElementById('f-deuda-recibido').value)||0;
+  const coste=parseFloat(document.getElementById('f-deuda-coste').value)||0;
+  const info=document.getElementById('deu-costes-info');
+  if(!info)return;
+  if(recibido<=0&&coste<=0){info.style.display='none';return;}
+  const dir=document.getElementById('f-deuda-dir').value;
+  if(coste<recibido&&coste>0){
+    info.style.display='block';
+    info.style.color='var(--amber)';
+    info.innerHTML=`⚠ El coste total (${fmt(coste)}) es menor que el dinero recibido (${fmt(recibido)}). Revisa los valores.`;
+    return;
+  }
+  const intereses=Math.max(0,coste-recibido);
+  if(intereses<0.01){
+    info.style.display='block';
+    info.style.color='var(--green)';
+    info.innerHTML=`✓ Sin intereses ni recargos. Devolverás exactamente lo recibido.`;
+  } else {
+    const pct=recibido>0?((intereses/recibido)*100).toFixed(2):0;
+    info.style.display='block';
+    info.style.color='var(--muted)';
+    const verbo=dir==='debo'?'Pagarás':'Recibirás';
+    info.innerHTML=`${verbo} <strong style="color:var(--amber)">${fmt(intereses)}</strong> de intereses/comisiones — un <strong>${pct}%</strong> sobre el principal.`;
+  }
 }
 
 function onDeudaSelChange(){
@@ -1223,36 +1281,38 @@ function addRecord(){
     return;
   }
 
-  const imp=parseFloat(document.getElementById('f-importe').value);
-  if(isNaN(imp)||imp<=0){alert('El importe es obligatorio');return;}
-
   if(tipo==='deuda'){
     const accion=document.getElementById('f-deuda-accion').value;
     const wid=parseInt(document.getElementById('f-deuda-wallet').value)||null;
     const wnom=window.wallets.find(w=>w.id===wid)?.nombre||'—';
 
     if(accion==='nueva'){
-      // Crear deuda nueva + apunte ingreso
+      // Crear deuda nueva + apunte ingreso/gasto
       const nombre=document.getElementById('f-deuda-nombre').value.trim();
       const dir=document.getElementById('f-deuda-dir').value;
       const contraparteId=parseInt(document.getElementById('f-deuda-contraparte').value)||null;
       const contraparteNombre=window.contacts.find(c=>c.id===contraparteId)?.nombre||'—';
+      const recibido=parseFloat(document.getElementById('f-deuda-recibido').value)||0;
+      const coste=parseFloat(document.getElementById('f-deuda-coste').value)||0;
       if(!nombre){alert('Introduce un nombre para la deuda');return;}
+      if(recibido<=0){alert('Introduce el dinero recibido (entra en cuenta)');return;}
+      if(coste<=0){alert('Introduce el coste total (deuda total)');return;}
+      if(coste<recibido){alert('El coste total no puede ser menor que el dinero recibido');return;}
 
-      // Crear deuda en el sistema (sin plazo, configurable luego)
+      // Crear deuda en el sistema. total = coste total a devolver
       const newDebt={
         id:Date.now(), nombre, dir, contraparteId, contraparteNombre,
-        cat:'—', total:imp, plazo:'sinplazo', desc:desc||'',
-        cuotas:[], pagado:0, fecha
+        cat:'—', total:coste, principal:recibido, intereses:Math.round((coste-recibido)*100)/100,
+        plazo:'sinplazo', desc:desc||'', cuotas:[], pagado:0, fecha
       };
       window.debts.push(newDebt);
 
-      // Apunte: ingreso si me prestan, gasto si presto yo
+      // Apunte movimiento físico de dinero (el recibido, no el coste)
       const recTipo=dir==='debo'?'ingreso':'gasto';
       const origenLabel=dir==='debo'?contraparteNombre:wnom;
       const destinoLabel=dir==='debo'?wnom:contraparteNombre;
       const rec={
-        id:Date.now()+1, tipo:recTipo, fecha, importe:imp,
+        id:Date.now()+1, tipo:recTipo, fecha, importe:recibido,
         descripcion:desc||`Nueva deuda — ${nombre}`,
         categoria:'Deuda', subcategoria:'Nueva deuda recibida',
         cuentaId:wid, cuentaNombre:wnom,
@@ -1262,14 +1322,18 @@ function addRecord(){
       window.records.push(rec);
       save();
       document.getElementById('f-deuda-nombre').value='';
-      document.getElementById('f-importe').value='';
+      document.getElementById('f-deuda-recibido').value='';
+      document.getElementById('f-deuda-coste').value='';
       document.getElementById('f-desc').value='';
+      const ci=document.getElementById('deu-costes-info');if(ci)ci.style.display='none';
       renderDebts(); updateDebtBadge(); renderEstadoGlobal(); render();
       showView('deudas');
       return;
     }
 
     // Acciones sobre deuda existente
+    const imp=parseFloat(document.getElementById('f-importe').value);
+    if(isNaN(imp)||imp<=0){alert('Introduce el importe');return;}
     const debtId=parseInt(document.getElementById('f-deuda-sel').value)||null;
     if(!debtId){alert('Selecciona una deuda');return;}
     const d=window.debts.find(x=>x.id===debtId);
@@ -1332,6 +1396,8 @@ function addRecord(){
     return;
   }
 
+  const imp=parseFloat(document.getElementById('f-importe').value);
+  if(isNaN(imp)||imp<=0){alert('El importe es obligatorio');return;}
   let rec={id:Date.now(),tipo,fecha,importe:imp,descripcion:desc};
   if(tipo==='ingreso'){
     const cat=document.getElementById('f-cat-ing').value;
@@ -1817,14 +1883,14 @@ function switchDebtTab(debtId, tab){
 function renderDebts(){
   const list=document.getElementById('debt-list'); if(!list)return;
 
-  const deboDebts=window.debts.filter(d=>d.dir==='debo');
-  const meDebenDebts=window.debts.filter(d=>d.dir==='medeben');
+  const deboDebts=window.debts.filter(d=>d.dir==='debo'&&Math.max(0,d.total-d.pagado)>0.01);
+  const meDebenDebts=window.debts.filter(d=>d.dir==='medeben'&&Math.max(0,d.total-d.pagado)>0.01);
 
   const {medeben,debo}=debtNetBalance();
   const td=document.getElementById('total-debo');if(td)td.textContent=fmt(debo);
   const tm=document.getElementById('total-medeben');if(tm)tm.textContent=fmt(medeben);
-  const cd=document.getElementById('count-debo');if(cd)cd.textContent=deboDebts.length+' deuda'+(deboDebts.length!==1?'s':'');
-  const cm=document.getElementById('count-medeben');if(cm)cm.textContent=meDebenDebts.length+' deuda'+(meDebenDebts.length!==1?'s':'');
+  const cd=document.getElementById('count-debo');if(cd)cd.textContent=deboDebts.length+' activa'+(deboDebts.length!==1?'s':'');
+  const cm=document.getElementById('count-medeben');if(cm)cm.textContent=meDebenDebts.length+' activa'+(meDebenDebts.length!==1?'s':'');
 
   if(!window.debts.length){list.innerHTML='<div class="info-box">Sin deudas registradas.</div>';return;}
 
@@ -2014,7 +2080,7 @@ function renderDebts(){
           ${d.desc?`<div style="font-size:12px;color:var(--muted);margin-top:4px">${d.desc}</div>`:''}
         </div>
         <div class="debt-amounts">
-          <div class="debt-total-lbl">Total: ${fmt(d.total)}</div>
+          <div class="debt-total-lbl">Total: ${fmt(d.total)}${d.intereses&&d.intereses>0.01?` <span style="color:var(--amber)" title="Intereses sobre principal ${fmt(d.principal||0)}">+${fmt(d.intereses)} int.</span>`:''}</div>
           <div class="debt-remaining ${liquidada?'medeben':colorClass}">${fmt(restante)}</div>
           <div style="font-size:10px;color:var(--muted2)">${pct.toFixed(0)}% pagado</div>
         </div>
@@ -2046,15 +2112,71 @@ function renderDebts(){
   }
 
   let html='';
-  if(deboDebts.length){
-    html+=`<div class="debt-section-title" style="color:var(--red)">Lo que debo <span>${deboDebts.length}</span></div>`;
-    html+=deboDebts.map(renderDebtCard).join('');
+
+  // Tab activas / saldadas
+  const activasFilter=window._debtFilter||'activas';
+  const isActiva=d=>Math.max(0,d.total-d.pagado)>0.01;
+  const debs=activasFilter==='activas'?window.debts.filter(isActiva):window.debts.filter(d=>!isActiva(d));
+  const nActivas=window.debts.filter(isActiva).length;
+  const nSaldadas=window.debts.length-nActivas;
+
+  html+=`<div class="dir-tabs" style="margin-bottom:14px">
+    <button class="dir-tab ${activasFilter==='activas'?'active':''}" onclick="setDebtFilter('activas')">🔥 Activas <span style="font-family:var(--mono);font-size:11px;background:rgba(0,0,0,.25);padding:1px 6px;border-radius:8px;margin-left:4px">${nActivas}</span></button>
+    <button class="dir-tab ${activasFilter==='saldadas'?'active':''}" onclick="setDebtFilter('saldadas')">✓ Saldadas <span style="font-family:var(--mono);font-size:11px;background:rgba(0,0,0,.25);padding:1px 6px;border-radius:8px;margin-left:4px">${nSaldadas}</span></button>
+  </div>`;
+
+  if(!debs.length){
+    html+=`<div class="info-box">${activasFilter==='activas'?'Sin deudas activas.':'Sin deudas saldadas todavía.'}</div>`;
+    list.innerHTML=html;
+    return;
   }
-  if(meDebenDebts.length){
-    html+=`<div class="debt-section-title" style="color:var(--green)">Lo que me deben <span>${meDebenDebts.length}</span></div>`;
-    html+=meDebenDebts.map(renderDebtCard).join('');
+
+  // Agrupar por contraparte
+  const groupedDebo={}, groupedMeDeben={};
+  debs.forEach(d=>{
+    const target=d.dir==='debo'?groupedDebo:groupedMeDeben;
+    const key=d.contraparteNombre||'Sin contraparte';
+    if(!target[key])target[key]=[];
+    target[key].push(d);
+  });
+
+  function renderGroup(group, color, titleLbl){
+    const keys=Object.keys(group);
+    if(!keys.length) return '';
+    const totalGroup=keys.reduce((s,k)=>s+group[k].reduce((ss,d)=>ss+Math.max(0,d.total-d.pagado),0),0);
+    const nDebts=keys.reduce((s,k)=>s+group[k].length,0);
+    let out=`<div class="debt-section-title" style="color:var(--${color})">${titleLbl} <span>${nDebts} deuda${nDebts!==1?'s':''} · ${fmt(totalGroup)}</span></div>`;
+    keys.forEach(k=>{
+      const arr=group[k];
+      const totalK=arr.reduce((s,d)=>s+Math.max(0,d.total-d.pagado),0);
+      if(arr.length>1){
+        out+=`<div style="background:var(--surface2);border-radius:10px;padding:4px 4px 10px;margin-bottom:14px;border:1px solid var(--border)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px 8px">
+            <div style="font-size:13px;font-weight:500;display:flex;align-items:center;gap:8px">
+              👤 ${k}
+              <span style="font-size:11px;font-family:var(--mono);background:var(--surface3);color:var(--muted);padding:2px 8px;border-radius:10px">${arr.length} deudas</span>
+            </div>
+            <div style="font-family:var(--mono);font-size:14px;font-weight:600;color:var(--${color})">${fmt(totalK)}</div>
+          </div>
+          <div style="padding:0 4px">
+            ${arr.map(renderDebtCard).join('')}
+          </div>
+        </div>`;
+      } else {
+        out+=arr.map(renderDebtCard).join('');
+      }
+    });
+    return out;
   }
+
+  html+=renderGroup(groupedDebo,'red','Lo que debo');
+  html+=renderGroup(groupedMeDeben,'green','Lo que me deben');
   list.innerHTML=html;
+}
+
+function setDebtFilter(f){
+  window._debtFilter=f;
+  renderDebts();
 }
 
 /* ---- DASHBOARD ---- */
