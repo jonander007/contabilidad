@@ -282,6 +282,9 @@ tbody tr:hover td{background:rgba(255,255,255,.02)}
     <button class="nav-item" id="nav-analisis" onclick="showView('analisis')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/><path d="M15 3v6"/></svg>Análisis
     </button>
+    <button class="nav-item" id="nav-apuestas" onclick="showView('apuestas')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Apuestas
+    </button>
   </div>
   <div class="period-box">
     <span class="plabel">Periodo</span>
@@ -748,6 +751,96 @@ tbody tr:hover td{background:rgba(255,255,255,.02)}
   </div>
 </div>
 
+<!-- APUESTAS CALENDAR -->
+<style>
+.ap-controls{display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap}
+.ap-nav-btn{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 11px;cursor:pointer;font-family:var(--font);font-size:13px;transition:all .15s}
+.ap-nav-btn:hover{background:var(--surface3);border-color:var(--accent)}
+.ap-period-label{font-size:16px;font-weight:600;letter-spacing:-.3px;min-width:160px;text-align:center}
+.ap-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.ap-cal-head{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:8px}
+.ap-cal-head div{text-align:center;font-size:11px;font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:.08em;padding:6px 0}
+.ap-day{aspect-ratio:1/1;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:7px 8px;display:flex;flex-direction:column;justify-content:space-between;position:relative;transition:all .15s;cursor:default;min-height:78px}
+.ap-day:hover{border-color:var(--accent)}
+.ap-day.empty{background:transparent;border-color:transparent;cursor:default}
+.ap-day.today{border-color:var(--accent);background:var(--accent-dim)}
+.ap-day.win{background:linear-gradient(135deg,rgba(34,197,94,0.18) 0%,var(--surface) 100%);border-color:rgba(34,197,94,0.3)}
+.ap-day.loss{background:linear-gradient(135deg,rgba(239,68,68,0.18) 0%,var(--surface) 100%);border-color:rgba(239,68,68,0.3)}
+.ap-day .day-num{font-size:13px;font-weight:500;color:var(--muted)}
+.ap-day .day-bal{font-family:var(--mono);font-size:13px;font-weight:600;text-align:right;line-height:1.2}
+.ap-day .day-bal.win{color:var(--green)}
+.ap-day .day-bal.loss{color:var(--red)}
+.ap-day .day-bal.zero{color:var(--muted2)}
+.ap-day .day-detail{font-size:9px;color:var(--muted2);font-family:var(--mono);text-align:right;margin-top:2px}
+.ap-summary-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:20px;margin-bottom:14px}
+.ap-summary-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);padding:14px 16px;position:relative;overflow:hidden}
+.ap-summary-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.ap-summary-card.semana::before{background:var(--accent)}
+.ap-summary-card.mes::before{background:var(--purple)}
+.ap-summary-card.año::before{background:var(--amber)}
+.ap-summary-card .sclabel{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;font-weight:600;margin-bottom:6px}
+.ap-summary-card .scval{font-size:20px;font-weight:600;font-family:var(--mono);letter-spacing:-.5px}
+.ap-summary-card .scsub{font-size:11px;color:var(--muted2);margin-top:3px;font-family:var(--mono)}
+.ap-stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
+.ap-stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);padding:13px 15px}
+.ap-stat .lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;font-weight:600;margin-bottom:5px}
+.ap-stat .val{font-size:18px;font-weight:600;font-family:var(--mono)}
+.ap-cat-select{display:flex;align-items:center;gap:8px;background:var(--surface2);padding:5px 10px;border-radius:8px}
+.ap-cat-select label{font-size:11px;color:var(--muted)}
+.ap-cat-select select{background:var(--surface);border:1px solid var(--border);font-size:12px;padding:5px 8px;width:auto}
+</style>
+
+<div id="view-apuestas" style="display:none">
+  <div class="page-header"><h1>Análisis de apuestas</h1><p>Calendario diario con balance entre ingresos y gastos</p></div>
+
+  <div class="ap-controls">
+    <button class="ap-nav-btn" onclick="apNavMonth(-1)">◀</button>
+    <div class="ap-period-label" id="ap-period-label">—</div>
+    <button class="ap-nav-btn" onclick="apNavMonth(1)">▶</button>
+    <button class="ap-nav-btn" onclick="apGoToday()">Hoy</button>
+    <div class="ap-cat-select">
+      <label>Categoría</label>
+      <select id="ap-cat" onchange="renderApuestas()"></select>
+    </div>
+    <div class="ap-cat-select">
+      <label>Subcategoría</label>
+      <select id="ap-sub" onchange="renderApuestas()"><option value="">Todas</option></select>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="ap-stats-grid" id="ap-stats"></div>
+
+  <!-- Calendar + Side -->
+  <div style="display:grid;grid-template-columns:1fr 280px;gap:18px">
+    <div class="card">
+      <div class="ap-cal-head">
+        <div>Lun</div><div>Mar</div><div>Mié</div><div>Jue</div><div>Vie</div><div>Sáb</div><div>Dom</div>
+      </div>
+      <div class="ap-cal-grid" id="ap-cal-grid"></div>
+    </div>
+    <div>
+      <div class="ap-summary-row" style="grid-template-columns:1fr;margin-top:0">
+        <div class="ap-summary-card semana">
+          <div class="sclabel">📅 Semana actual</div>
+          <div class="scval" id="ap-sem-val">€0,00</div>
+          <div class="scsub" id="ap-sem-sub">—</div>
+        </div>
+        <div class="ap-summary-card mes">
+          <div class="sclabel">📆 Mes visible</div>
+          <div class="scval" id="ap-mes-val">€0,00</div>
+          <div class="scsub" id="ap-mes-sub">—</div>
+        </div>
+        <div class="ap-summary-card año">
+          <div class="sclabel">📊 Año actual</div>
+          <div class="scval" id="ap-año-val">€0,00</div>
+          <div class="scsub" id="ap-año-sub">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 </main>
 </div>
 </div>
@@ -869,7 +962,7 @@ function initSelectors(){
 }
 
 /* ---- VIEWS ---- */
-const VIEWS=['dashboard','nuevo','registros','deudas','directorio','analisis'];
+const VIEWS=['dashboard','nuevo','registros','deudas','directorio','analisis','apuestas'];
 function showView(v){
   VIEWS.forEach(id=>document.getElementById('view-'+id).style.display=id===v?'block':'none');
   VIEWS.forEach(id=>{const el=document.getElementById('nav-'+id);if(el)el.classList.toggle('active',id===v);});
@@ -879,6 +972,7 @@ function showView(v){
   if(v==='deudas'){buildDebtSelects();renderDebts();}
   if(v==='directorio'){renderWallets();renderContacts();renderCatTree();}
   if(v==='analisis'){initAnalisis();renderAnalisis();}
+  if(v==='apuestas'){initApuestas();renderApuestas();}
 }
 
 function setPeriod(p){
@@ -1683,15 +1777,38 @@ function addCuotaLibre(debtId){
   save(); renderDebts(); updateDebtBadge(); renderEstadoGlobal(); render();
 }
 
-function toggleCuota(debtId,cuotaId){
+function toggleCuota(debtId,cuotaId,wid){
   const d=window.debts.find(x=>x.id===debtId); if(!d)return;
   const c=d.cuotas.find(x=>x.id===cuotaId); if(!c)return;
   const wasPagada=c.pagada;
   c.pagada=!c.pagada;
   d.pagado=d.cuotas.filter(x=>x.pagada).reduce((s,x)=>s+x.importe,0);
-  // Apunte solo al marcar como pagada, no al desmarcar
-  if(!wasPagada) _pushDebtRecord(d,'pago',c.fecha,c.importe,`${c.desc} — ${d.nombre}`,null);
+  if(!wasPagada) _pushDebtRecord(d,'pago',c.fecha,c.importe,`${c.desc} — ${d.nombre}`,wid||null);
   save(); renderDebts(); updateDebtBadge(); render(); renderEstadoGlobal();
+}
+
+function showCuotaWalletPicker(debtId,cuotaId){
+  const cont=document.getElementById(`cuota-actions-${debtId}-${cuotaId}`);
+  if(!cont)return;
+  if(!window.wallets.length){
+    // No wallets — pay directly without wallet
+    toggleCuota(debtId,cuotaId,null);
+    return;
+  }
+  cont.innerHTML=`
+    <select id="picker-wallet-${debtId}-${cuotaId}" style="font-size:11px;padding:4px 6px;max-width:140px">
+      <option value="">Sin cuenta</option>
+      ${window.wallets.map(w=>`<option value="${w.id}">${w.nombre}</option>`).join('')}
+    </select>
+    <button class="btn btn-xs btn-success" onclick="confirmCuotaPay(${debtId},${cuotaId})">✓ Pagar</button>
+    <button class="btn btn-xs btn-ghost" onclick="renderDebts()">Cancelar</button>
+  `;
+}
+
+function confirmCuotaPay(debtId,cuotaId){
+  const sel=document.getElementById(`picker-wallet-${debtId}-${cuotaId}`);
+  const wid=sel?parseInt(sel.value)||null:null;
+  toggleCuota(debtId,cuotaId,wid);
 }
 
 function deleteDebt(id){
@@ -1909,15 +2026,15 @@ function renderDebts(){
       const venc=!c.pagada&&c.fecha<today;
       const isExtra=c.tipo==='amortizacion'||c.tipo==='cancelacion'||c.tipo==='libre';
       const rowStyle=isExtra?'background:rgba(255,255,255,.03);border-radius:6px;padding:6px 0;':'';
-      return`<div class="cuota-row" style="${rowStyle}">
+      return`<div class="cuota-row" id="cuota-row-${d.id}-${c.id}" style="${rowStyle}">
         <span class="cuota-fecha">${c.fecha}</span>
         <span class="cuota-desc">${c.desc}${isExtra?` <span style="font-size:10px;color:var(--muted2)">[extra]</span>`:''}</span>
         <span class="cuota-amt" style="color:${colorVar}">${fmt(c.importe)}</span>
-        <div class="cuota-actions">
+        <div class="cuota-actions" id="cuota-actions-${d.id}-${c.id}">
           ${isExtra
             ?`<span class="badge ok">Pagado</span>`
             :`<span class="badge ${c.pagada?'ok':venc?'venc':'pend'}">${c.pagada?'Pagada':venc?'Vencida':'Pendiente'}</span>
-              <button class="btn btn-xs ${c.pagada?'btn-ghost':'btn-success'}" onclick="toggleCuota(${d.id},${c.id})">${c.pagada?'Desmarcar':'✓ Pagar'}</button>`
+              <button class="btn btn-xs ${c.pagada?'btn-ghost':'btn-success'}" onclick="${c.pagada?`toggleCuota(${d.id},${c.id},null)`:`showCuotaWalletPicker(${d.id},${c.id})`}">${c.pagada?'Desmarcar':'✓ Pagar'}</button>`
           }
           <button class="del-btn" onclick="deleteCuota(${d.id},${c.id})">✕</button>
         </div>
@@ -2471,6 +2588,195 @@ function renderAnCharts(catMap,vista,records){
   const total=pieData.reduce((s,v)=>s+v,0);
   if(pieEl) pieEl.innerHTML=catKeys.map((k,i)=>`<span class="legend-item"><span class="legend-dot" style="background:${PIE_COLORS[i%PIE_COLORS.length]}"></span>${k} ${total>0?((pieData[i]/total)*100).toFixed(0):0}%</span>`).join('');
   anPieChart=new Chart(ctxP,{type:'doughnut',data:{labels:catKeys,datasets:[{data:pieData,backgroundColor:PIE_COLORS.slice(0,catKeys.length).map(c=>c+'bb'),borderColor:PIE_COLORS.slice(0,catKeys.length),borderWidth:1.5}]},options:{responsive:true,maintainAspectRatio:false,cutout:'60%',plugins:{legend:{display:false}}}});
+}
+
+/* ---- APUESTAS — CALENDARIO ---- */
+let apCurrentDate=new Date();
+
+function initApuestas(){
+  // Cat selector — auto-select "Apuestas" if exists, otherwise first
+  const sel=document.getElementById('ap-cat');
+  if(!sel) return;
+  const prev=sel.value;
+  sel.innerHTML='';
+  const cats=Object.keys(window.cats);
+  if(!cats.length){
+    sel.innerHTML='<option value="">— sin categorías —</option>';
+  } else {
+    cats.forEach(c=>sel.add(new Option(c,c)));
+    // Auto-select apuestas if found
+    const apuestasKey=cats.find(c=>c.toLowerCase().includes('apuesta'));
+    if(prev&&cats.includes(prev)) sel.value=prev;
+    else if(apuestasKey) sel.value=apuestasKey;
+  }
+  buildApSubs();
+}
+
+function buildApSubs(){
+  const cat=document.getElementById('ap-cat').value;
+  const sub=document.getElementById('ap-sub');
+  const prev=sub.value;
+  sub.innerHTML='<option value="">Todas</option>';
+  if(cat&&window.cats[cat]) window.cats[cat].forEach(s=>sub.add(new Option(s,s)));
+  if(prev) sub.value=prev;
+}
+
+document.addEventListener('change',function(e){
+  if(e.target&&e.target.id==='ap-cat') buildApSubs();
+});
+
+function apNavMonth(delta){
+  apCurrentDate=new Date(apCurrentDate.getFullYear(),apCurrentDate.getMonth()+delta,1);
+  renderApuestas();
+}
+function apGoToday(){
+  apCurrentDate=new Date();
+  renderApuestas();
+}
+
+function getApRecords(){
+  const cat=document.getElementById('ap-cat').value;
+  const subF=document.getElementById('ap-sub').value;
+  return window.records.filter(r=>{
+    if(r.tipo!=='ingreso'&&r.tipo!=='gasto') return false;
+    if(cat&&r.categoria!==cat) return false;
+    if(subF&&r.subcategoria!==subF) return false;
+    return true;
+  });
+}
+
+function renderApuestas(){
+  const MNAMES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const y=apCurrentDate.getFullYear();
+  const m=apCurrentDate.getMonth();
+  document.getElementById('ap-period-label').textContent=`${MNAMES[m]} ${y}`;
+
+  const allRecs=getApRecords();
+
+  // Agrupa por día
+  const byDay={};
+  allRecs.forEach(r=>{
+    const d=r.fecha;
+    if(!byDay[d]) byDay[d]={ing:0,gas:0,count:0};
+    if(r.tipo==='ingreso') byDay[d].ing=Math.round((byDay[d].ing+r.importe)*100)/100;
+    else byDay[d].gas=Math.round((byDay[d].gas+r.importe)*100)/100;
+    byDay[d].count++;
+  });
+
+  // Build calendar grid
+  const grid=document.getElementById('ap-cal-grid');
+  if(!grid)return;
+  const firstDay=new Date(y,m,1);
+  const lastDay=new Date(y,m+1,0);
+  // Lunes=0
+  const startWeekday=(firstDay.getDay()+6)%7;
+  const totalDays=lastDay.getDate();
+  const today=new Date().toISOString().slice(0,10);
+
+  let cells='';
+  for(let i=0;i<startWeekday;i++) cells+=`<div class="ap-day empty"></div>`;
+
+  for(let d=1;d<=totalDays;d++){
+    const dateStr=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const data=byDay[dateStr];
+    const isToday=dateStr===today;
+    let cls='ap-day';
+    if(isToday) cls+=' today';
+    let balHTML='<div class="day-bal zero">—</div>';
+    let detailHTML='';
+    if(data){
+      const bal=data.ing-data.gas;
+      if(bal>0.01){cls+=' win';balHTML=`<div class="day-bal win">+${fmt(bal)}</div>`;}
+      else if(bal<-0.01){cls+=' loss';balHTML=`<div class="day-bal loss">${fmt(bal)}</div>`;}
+      else balHTML=`<div class="day-bal zero">€0,00</div>`;
+      detailHTML=`<div class="day-detail">${data.count} mov.</div>`;
+    }
+    cells+=`<div class="${cls}" title="${dateStr}${data?` · ${data.count} movimientos`:''}">
+      <div class="day-num">${d}</div>
+      <div>${balHTML}${detailHTML}</div>
+    </div>`;
+  }
+
+  // Fill trailing empty cells to complete the row (optional, looks cleaner)
+  const totalCells=startWeekday+totalDays;
+  const trailing=(7-(totalCells%7))%7;
+  for(let i=0;i<trailing;i++) cells+=`<div class="ap-day empty"></div>`;
+
+  grid.innerHTML=cells;
+
+  // KPIs y resúmenes
+  const today2=new Date();
+  const currentWeekStart=new Date(today2);
+  const wd=(today2.getDay()+6)%7;
+  currentWeekStart.setDate(today2.getDate()-wd);
+  const currentWeekEnd=new Date(currentWeekStart);
+  currentWeekEnd.setDate(currentWeekStart.getDate()+6);
+
+  function sumRange(from,to){
+    let ing=0,gas=0,count=0;
+    Object.entries(byDay).forEach(([k,v])=>{
+      const dd=new Date(k);
+      if(dd>=from&&dd<=to){ing+=v.ing;gas+=v.gas;count+=v.count;}
+    });
+    return {ing:Math.round(ing*100)/100,gas:Math.round(gas*100)/100,bal:Math.round((ing-gas)*100)/100,count};
+  }
+
+  const sem=sumRange(currentWeekStart,currentWeekEnd);
+  const mes=sumRange(new Date(y,m,1),new Date(y,m+1,0));
+  const año=sumRange(new Date(today2.getFullYear(),0,1),new Date(today2.getFullYear(),11,31));
+
+  function setSummary(prefix,obj){
+    const v=document.getElementById(`ap-${prefix}-val`);
+    const s=document.getElementById(`ap-${prefix}-sub`);
+    if(v){v.textContent=fmt(obj.bal);v.style.color=obj.bal>0.01?'var(--green)':obj.bal<-0.01?'var(--red)':'var(--text)';}
+    if(s) s.innerHTML=`<span style="color:var(--green)">+${fmt(obj.ing)}</span> · <span style="color:var(--red)">-${fmt(obj.gas)}</span> · ${obj.count} mov.`;
+  }
+  setSummary('sem',sem);
+  setSummary('mes',mes);
+  setSummary('año',año);
+
+  // Stats: días ganadores, perdedores, neutros, racha
+  const daysData=Object.entries(byDay).filter(([k])=>{const d=new Date(k);return d.getFullYear()===y&&d.getMonth()===m;});
+  let winDays=0,lossDays=0,zeroDays=0;
+  daysData.forEach(([k,v])=>{
+    const bal=v.ing-v.gas;
+    if(bal>0.01) winDays++;
+    else if(bal<-0.01) lossDays++;
+    else zeroDays++;
+  });
+  const totalDaysWithActivity=daysData.length;
+  const winRate=totalDaysWithActivity>0?Math.round((winDays/totalDaysWithActivity)*100):0;
+
+  // Mejor y peor día del mes
+  let bestDay=null,worstDay=null;
+  daysData.forEach(([k,v])=>{
+    const bal=v.ing-v.gas;
+    if(!bestDay||bal>bestDay.bal) bestDay={fecha:k,bal};
+    if(!worstDay||bal<worstDay.bal) worstDay={fecha:k,bal};
+  });
+
+  const statsEl=document.getElementById('ap-stats');
+  if(statsEl) statsEl.innerHTML=`
+    <div class="ap-stat" style="border-top:2px solid var(--green)">
+      <div class="lbl">🟢 Días ganadores</div>
+      <div class="val" style="color:var(--green)">${winDays}<span style="font-size:12px;color:var(--muted2);margin-left:6px">de ${totalDaysWithActivity}</span></div>
+      <div style="font-size:11px;color:var(--muted2);margin-top:3px;font-family:var(--mono)">${winRate}% acierto</div>
+    </div>
+    <div class="ap-stat" style="border-top:2px solid var(--red)">
+      <div class="lbl">🔴 Días perdedores</div>
+      <div class="val" style="color:var(--red)">${lossDays}</div>
+      <div style="font-size:11px;color:var(--muted2);margin-top:3px;font-family:var(--mono)">${zeroDays} en cero</div>
+    </div>
+    <div class="ap-stat" style="border-top:2px solid var(--accent)">
+      <div class="lbl">⬆ Mejor día</div>
+      <div class="val" style="color:var(--green)">${bestDay&&bestDay.bal>0?'+'+fmt(bestDay.bal):'—'}</div>
+      <div style="font-size:11px;color:var(--muted2);margin-top:3px;font-family:var(--mono)">${bestDay&&bestDay.bal>0?bestDay.fecha:''}</div>
+    </div>
+    <div class="ap-stat" style="border-top:2px solid var(--amber)">
+      <div class="lbl">⬇ Peor día</div>
+      <div class="val" style="color:var(--red)">${worstDay&&worstDay.bal<0?fmt(worstDay.bal):'—'}</div>
+      <div style="font-size:11px;color:var(--muted2);margin-top:3px;font-family:var(--mono)">${worstDay&&worstDay.bal<0?worstDay.fecha:''}</div>
+    </div>`;
 }
 
 function exportCSV(){
